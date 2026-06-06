@@ -1287,15 +1287,20 @@ let gsSyncing   = false;
 
 async function gsGet(params) {
   const url = GS_URL + '?' + new URLSearchParams(params);
-  const res = await fetch(url);
+  const res = await fetch(url, {
+    method: 'GET',
+    redirect: 'follow',
+    mode: 'cors',
+  });
   if (!res.ok) throw new Error('HTTP ' + res.status);
   return res.json();
 }
 
 async function gsPost(data) {
-  // Apps Script deployed as web app requires text/plain to avoid CORS preflight
   const res = await fetch(GS_URL, {
     method: 'POST',
+    redirect: 'follow',
+    mode: 'cors',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify(data),
   });
