@@ -1,0 +1,3415 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>VMRTIN26 — Motor Oil Refineries</title>
+<meta name="version" content="1.0.0">
+<meta name="deploy" content="github-pages">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27><text y=%27.9em%27 font-size=%2790%27>🔥</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* ── LIGHT STEEL INDUSTRIAL PALETTE ── */
+  --bg:      #dde2e8;   /* ανοιχτό γκρι ατσάλι — φόντο */
+  --bg2:     #eef1f4;   /* κάρτες — σχεδόν λευκό ατσάλι */
+  --bg3:     #f5f7f9;   /* inputs — πολύ ανοιχτό */
+  --bg4:     #c8cfd8;   /* hover/active */
+  --border:  #b0bac8;   /* ορατό steel edge */
+  --border2: #8a98aa;   /* έντονο edge */
+
+  /* ── TEXT — σκούρο για αντίθεση ── */
+  --text:    #1a2030;   /* σχεδόν μαύρο navy */
+  --text2:   #3a4a5e;   /* δευτερεύον σκούρο */
+  --text3:   #6a7a90;   /* muted */
+
+  /* ── INDUSTRIAL BLUE — primary accent ── */
+  --accent:  #1a5fa8;   /* βαθύ βιομηχανικό μπλε */
+  --accent2: #2878cc;   /* ανοιχτότερο μπλε */
+
+  /* ── STATUS COLORS ── */
+  --blue:    #1a5fa8;
+  --blue2:   #2878cc;
+  --green:   #1e7a42;   /* safety green */
+  --green2:  #28a05a;
+  --red:     #c0251e;   /* hazard red */
+  --red2:    #e03830;
+  --purple:  #5a3a8a;
+  --purple2: #7a5aaa;
+  --cyan:    #1a7a88;
+
+  --font:  'Rajdhani', sans-serif;
+  --mono:  'Share Tech Mono', monospace;
+  --cond:  'Oswald', sans-serif;
+  --radius:  6px;
+  --radius2: 8px;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  background-image:
+    repeating-linear-gradient(
+      0deg, transparent, transparent 39px,
+      rgba(0,0,0,0.04) 39px, rgba(0,0,0,0.04) 40px
+    ),
+    repeating-linear-gradient(
+      90deg, transparent, transparent 79px,
+      rgba(0,0,0,0.02) 79px, rgba(0,0,0,0.02) 80px
+    );
+  color: var(--text);
+  min-height: 100vh;
+  font-size: 15px;
+  letter-spacing: 0.2px;
+}
+
+/* ── LOGIN ── */
+#login-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+  background:
+    linear-gradient(160deg, #c8d0da 0%, #dde2e8 60%, #d0d8e4 100%);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 360px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--accent);
+  border-radius: var(--radius2);
+  padding: 32px 28px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.15), 0 2px 8px rgba(26,95,168,0.12);
+}
+
+.login-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 28px;
+}
+
+.login-logo .logo-icon {
+  width: 38px;
+  height: 38px;
+  background: var(--accent);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+.login-logo .logo-text {
+  font-family: var(--cond);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.5px;
+  line-height: 1.2;
+}
+
+.login-logo .logo-sub {
+  font-size: 11px;
+  color: var(--text3);
+  font-weight: 400;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.login-title {
+  font-family: var(--cond);
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+
+.login-sub {
+  font-size: 13px;
+  color: var(--text3);
+  margin-bottom: 24px;
+}
+
+.field-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text3);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+  display: block;
+}
+
+.field-input {
+  width: 100%;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 15px;
+  padding: 10px 12px;
+  outline: none;
+  margin-bottom: 16px;
+  transition: border-color 0.2s;
+}
+
+.field-input:focus { border-color: var(--accent); }
+
+.btn-primary {
+  width: 100%;
+  background: var(--accent);
+  color: #0f1117;
+  border: none;
+  border-radius: var(--radius);
+  font-family: var(--cond);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 12px;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+}
+
+.btn-primary:active { transform: scale(0.98); }
+.btn-primary:hover { background: var(--accent2); }
+
+.login-hint {
+  margin-top: 20px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  font-size: 12px;
+  color: var(--text3);
+}
+
+.login-hint table { width: 100%; border-collapse: collapse; }
+.login-hint td { padding: 3px 0; }
+.login-hint td:first-child { color: var(--accent); font-family: var(--mono); font-size: 11px; width: 60px; }
+.login-hint .role-badge { 
+  font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px;
+  font-family: var(--cond); letter-spacing: 0.3px;
+}
+.role-admin   { background: #fde8e0; color: #8a2010; border: 1px solid #f0a090; }
+.role-super   { background: #fef8e0; color: #7a5800; border: 1px solid #e8d080; }
+.role-tech    { background: #e0ecf8; color: #0a3a70; border: 1px solid #90bce0; }
+.role-view    { background: #e0f4e8; color: #0a4a20; border: 1px solid #80c8a0; }
+
+.login-error {
+  color: var(--red2);
+  font-size: 13px;
+  text-align: center;
+  margin-top: 12px;
+  display: none;
+}
+
+/* ── APP SHELL ── */
+#app { display: none; flex-direction: column; min-height: 100vh; }
+
+.topbar {
+  background: #1a2535;
+  border-bottom: 2px solid var(--accent);
+  padding: 0 16px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.25);
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.topbar-logo {
+  font-family: var(--cond);
+  font-size: 17px;
+  font-weight: 600;
+  color: #ffffff;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.topbar-tag {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: #a0b4cc;
+  background: rgba(255,255,255,0.1);
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,0.15);
+}
+
+.topbar-tag {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+  background: var(--bg3);
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.user-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 20px;
+  padding: 4px 10px 4px 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.user-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--cond);
+}
+
+.icon-btn {
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: var(--radius);
+  color: #a0b4cc;
+  width: 34px; height: 34px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+  transition: border-color 0.2s, color 0.2s;
+}
+.icon-btn:hover { border-color: var(--accent2); color: #fff; }
+
+/* ── BOTTOM NAV ── */
+.bottom-nav {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  background: #1a2535;
+  border-top: 2px solid var(--accent);
+  display: flex;
+  z-index: 100;
+  padding-bottom: env(safe-area-inset-bottom);
+  box-shadow: 0 -4px 16px rgba(0,0,0,0.2);
+}
+
+.nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 4px 6px;
+  cursor: pointer;
+  transition: color 0.2s;
+  color: #607080;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  font-family: var(--cond);
+  text-transform: uppercase;
+  gap: 3px;
+  border: none;
+  background: none;
+}
+
+.nav-item .nav-icon { font-size: 20px; line-height: 1; }
+.nav-item.active { color: #60aaee; }
+.nav-item.active .nav-icon { filter: drop-shadow(0 0 5px rgba(40,120,204,0.6)); }
+
+.nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 4px 6px;
+  cursor: pointer;
+  transition: color 0.2s;
+  color: var(--text3);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  font-family: var(--cond);
+  text-transform: uppercase;
+  gap: 3px;
+  border: none;
+  background: none;
+}
+
+.nav-item .nav-icon { font-size: 20px; line-height: 1; }
+.nav-item.active { color: var(--accent); }
+.nav-item.active .nav-icon { filter: drop-shadow(0 0 5px rgba(232,98,26,0.5)); }
+
+/* ── MAIN CONTENT ── */
+.main-content {
+  flex: 1;
+  padding: 16px;
+  padding-bottom: 80px;
+  max-width: 680px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* ── PAGE HEADERS ── */
+.page-header {
+  margin-bottom: 20px;
+}
+
+.page-title {
+  font-family: var(--cond);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.3px;
+}
+
+.page-sub {
+  font-size: 13px;
+  color: var(--text3);
+  margin-top: 2px;
+}
+
+/* ── CARDS ── */
+.card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius2);
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.card-title {
+  font-family: var(--cond);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text3);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+/* ── KPI GRID ── */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.kpi-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius2);
+  padding: 14px;
+  position: relative;
+  overflow: hidden;
+}
+
+.kpi-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+}
+
+.kpi-card.amber::before { background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+.kpi-card.blue::before  { background: linear-gradient(90deg, #0a3060, var(--blue2)); }
+.kpi-card.green::before { background: linear-gradient(90deg, #0a4020, var(--green2)); }
+.kpi-card.red::before   { background: linear-gradient(90deg, #6a1010, var(--red2)); }
+
+.kpi-value {
+  font-family: var(--mono);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.kpi-card.amber .kpi-value { color: var(--accent); }
+.kpi-card.blue  .kpi-value { color: var(--blue2); }
+.kpi-card.green .kpi-value { color: var(--green2); }
+.kpi-card.red   .kpi-value { color: var(--red2); }
+
+.kpi-label {
+  font-size: 11px;
+  color: var(--text3);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  font-family: var(--cond);
+}
+
+/* ── SEARCH BAR ── */
+.search-wrap {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.search-input {
+  flex: 1;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 14px;
+  padding: 10px 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.search-input:focus { border-color: var(--accent); }
+.search-input::placeholder { color: var(--text3); font-family: var(--font); }
+
+.qr-btn {
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius);
+  color: #0f1117;
+  width: 42px;
+  height: 42px;
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+.qr-btn:hover { background: var(--accent2); }
+
+/* ── DETECTOR LIST ── */
+.detector-item {
+  display: flex;
+  align-items: center;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  gap: 12px;
+}
+
+.detector-item:hover, .detector-item:active {
+  border-color: var(--accent);
+  background: var(--bg3);
+}
+
+.det-tag {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  min-width: 110px;
+}
+
+.det-area {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text3);
+}
+
+.det-status {
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--cond);
+  padding: 3px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.status-ok     { background: #d0f0dc; color: #0a4a20; border: 1px solid #80c8a0; }
+.status-done   { background: #d0e8f8; color: #0a3060; border: 1px solid #80b8e0; }
+.status-pending{ background: #fef0d0; color: #6a4000; border: 1px solid #e0b860; }
+.status-new    { background: #e8ecf0; color: #6a7a90; border: 1px solid #b0bac8; }
+
+.det-arrow { color: var(--text3); font-size: 16px; }
+
+/* ── FILTER PILLS ── */
+.filter-row {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  margin-bottom: 14px;
+  scrollbar-width: none;
+}
+.filter-row::-webkit-scrollbar { display: none; }
+
+.filter-pill {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 5px 12px;
+  font-size: 12px;
+  color: var(--text3);
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: var(--cond);
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  transition: all 0.15s;
+}
+.filter-pill.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0f1117;
+}
+
+/* ── DETECTOR DETAIL ── */
+.back-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text3);
+  font-size: 13px;
+  cursor: pointer;
+  margin-bottom: 16px;
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--font);
+}
+.back-btn:hover { color: var(--accent); }
+
+.detail-header {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius2);
+  padding: 18px;
+  margin-bottom: 14px;
+}
+
+.detail-tag {
+  font-family: var(--mono);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+
+.detail-meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.meta-badge {
+  font-size: 11px;
+  font-family: var(--cond);
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.3px;
+}
+.meta-gas  { background: #daeaf8; color: #0a3060; border: 1px solid #90bce0; }
+.meta-fire { background: #fde0da; color: #6a1010; border: 1px solid #e09080; }
+.meta-area { background: var(--bg3); color: var(--text2); border: 1px solid var(--border); }
+.meta-year { background: var(--bg3); color: var(--text3); border: 1px solid var(--border); font-family: var(--mono); }
+
+/* ── HISTORY TABLE ── */
+.history-entry {
+  border-left: 2px solid var(--border);
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  background: var(--bg2);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  background: linear-gradient(90deg, rgba(26,95,168,0.06) 0%, transparent 50%);
+}
+
+.hist-date {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+  margin-bottom: 4px;
+}
+
+.hist-task {
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 500;
+  margin-bottom: 3px;
+}
+
+.hist-tech {
+  font-size: 12px;
+  color: var(--text3);
+}
+
+.hist-cylinder {
+  display: inline-block;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent);
+  margin-left: 6px;
+}
+
+/* ── ADD ENTRY FORM ── */
+.form-group { margin-bottom: 14px; }
+
+.form-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text3);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+  font-family: var(--cond);
+}
+
+.form-input {
+  width: 100%;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 15px;
+  padding: 10px 12px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.form-input:focus { border-color: var(--accent); }
+
+/* Multi-select task chips */
+.task-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.task-chip {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--text2);
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: var(--font);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.task-chip.selected {
+  background: rgba(26,95,168,0.12);
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px rgba(26,95,168,0.2);
+}
+
+.task-chip .chip-check { font-size: 14px; }
+
+.altro-input {
+  width: 100%;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  padding: 8px 12px;
+  outline: none;
+  margin-top: 8px;
+  display: none;
+  transition: border-color 0.2s;
+}
+.altro-input:focus { border-color: var(--accent); }
+.altro-input.show { display: block; }
+
+/* ── STATS PAGE ── */
+.bar-chart-wrap { margin-top: 10px; }
+
+.bar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.bar-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text2);
+  min-width: 160px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bar-track {
+  flex: 1;
+  background: var(--bg3);
+  border-radius: 3px;
+  height: 8px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.6s ease;
+}
+
+.bar-count {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+  min-width: 24px;
+  text-align: right;
+}
+
+/* ── ADMIN PAGE ── */
+.user-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.user-row:last-child { border-bottom: none; }
+
+.user-info { flex: 1; }
+.user-name { font-size: 14px; font-weight: 500; color: var(--text); }
+.user-username { font-family: var(--mono); font-size: 11px; color: var(--text3); }
+
+.role-select {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 12px;
+  padding: 5px 8px;
+  outline: none;
+  font-family: var(--cond);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ── QR MODAL ── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.75);
+  z-index: 200;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.modal-overlay.open { display: flex; }
+
+.modal-box {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius2);
+  padding: 24px;
+  width: 100%;
+  max-width: 360px;
+  text-align: center;
+}
+
+.modal-title {
+  font-family: var(--cond);
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.modal-sub {
+  font-size: 13px;
+  color: var(--text3);
+  margin-bottom: 20px;
+}
+
+.qr-placeholder {
+  width: 160px;
+  height: 160px;
+  margin: 0 auto 20px;
+  background: var(--bg3);
+  border: 2px dashed var(--border2);
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--text3);
+  font-size: 36px;
+}
+
+.qr-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.modal-cancel {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text2);
+  font-family: var(--font);
+  font-size: 14px;
+  padding: 10px 16px;
+  cursor: pointer;
+  flex: 1;
+}
+
+.modal-ok {
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius);
+  color: #0f1117;
+  font-family: var(--cond);
+  font-size: 15px;
+  font-weight: 700;
+  padding: 10px 16px;
+  cursor: pointer;
+  flex: 1;
+}
+
+/* ── TOAST ── */
+.toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--green);
+  color: #fff;
+  font-family: var(--cond);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 20px;
+  border-radius: 20px;
+  z-index: 300;
+  opacity: 0;
+  transition: all 0.3s;
+  white-space: nowrap;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ── LANG TOGGLE ── */
+.lang-btn {
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: var(--radius);
+  color: #a0b4cc;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 8px;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  transition: all 0.15s;
+}
+.lang-btn:hover { border-color: var(--accent2); color: #fff; }
+
+/* ── DIVIDER ── */
+.divider {
+  height: 1px;
+  background: var(--border);
+  margin: 16px 0;
+}
+
+/* ── EMPTY STATE ── */
+.empty-state {
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--text3);
+}
+.empty-icon { font-size: 36px; margin-bottom: 10px; }
+.empty-text { font-size: 14px; }
+
+/* ── SUBMIT BTN ── */
+.submit-btn {
+  width: 100%;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius);
+  color: #0f1117;
+  font-family: var(--cond);
+  font-size: 16px;
+  font-weight: 700;
+  padding: 14px;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  transition: background 0.2s, transform 0.1s;
+  margin-top: 8px;
+}
+.submit-btn:active { transform: scale(0.98); }
+.submit-btn:disabled { background: var(--bg4); color: var(--text3); cursor: default; }
+
+.section-tag {
+  font-size: 12px;
+  font-family: var(--mono);
+  color: var(--accent);
+  background: rgba(26,95,168,0.1);
+  border: 1px solid rgba(26,95,168,0.2);
+  border-radius: 4px;
+  padding: 3px 8px;
+  margin-bottom: 12px;
+  display: inline-block;
+}
+
+/* ── ALERT BADGES ── */
+.alert-overdue  { background: #fde0de; color: #8a1010; border: 1px solid #e08080; }
+.alert-soon     { background: #fef4d8; color: #7a4400; border: 1px solid #e8c060; }
+.alert-ok       { background: #d8f0e4; color: #0a4820; border: 1px solid #80c8a0; }
+.alert-none     { background: #e8ecf0; color: #6a7a90; border: 1px solid #b0bac8; }
+
+/* ── IMPORT DROP ZONE ── */
+.drop-zone {
+  border: 2px dashed var(--border2);
+  border-radius: var(--radius2);
+  padding: 28px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--bg3);
+}
+.drop-zone:hover, .drop-zone.drag-over {
+  border-color: var(--accent);
+  background: rgba(26,95,168,0.06);
+}
+.drop-zone-icon { font-size: 32px; margin-bottom: 8px; }
+.drop-zone-text { font-size: 14px; color: var(--text2); font-family: var(--cond); font-weight: 600; }
+.drop-zone-sub  { font-size: 12px; color: var(--text3); margin-top: 4px; }
+
+/* ── PROGRESS BAR ── */
+.progress-wrap { margin: 12px 0; }
+.progress-track {
+  background: var(--bg3);
+  border-radius: 4px;
+  height: 6px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 4px;
+  transition: width 0.3s;
+}
+.progress-label { font-size: 12px; color: var(--text3); font-family: var(--mono); }
+
+/* ── INTERVAL SELECTOR ── */
+.interval-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.interval-row:last-child { border-bottom: none; }
+.interval-label { flex:1; font-size:13px; color:var(--text); }
+.interval-select {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 12px;
+  padding: 4px 8px;
+  outline: none;
+  font-family: var(--cond);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ── MONTH CALENDAR ── */
+.month-header {
+  font-family: var(--cond);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 8px 0 6px;
+  margin-top: 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+</style>
+</head>
+<body>
+
+<!-- ══ LOGIN SCREEN ══ -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="logo-icon">🔥</div>
+      <div>
+        <div class="logo-text">DETECTORS LOGBOOK</div>
+        <div class="logo-sub">Motor Oil Refineries · Instruments Dept</div>
+      </div>
+    </div>
+    <div class="login-title" id="l-title">Είσοδος</div>
+    <div class="login-sub" id="l-sub">Εισάγετε τα στοιχεία σας</div>
+    <label class="field-label" id="l-user-lbl">ΧΡΗΣΤΗΣ</label>
+    <input type="text" class="field-input" id="login-user" placeholder="username" autocomplete="username">
+    <label class="field-label" id="l-pass-lbl">ΚΩΔΙΚΟΣ</label>
+    <input type="password" class="field-input" id="login-pass" placeholder="••••••••" autocomplete="current-password">
+    <button class="btn-primary" onclick="doLogin()" id="l-btn">ΕΙΣΟΔΟΣ</button>
+    <div class="login-error" id="login-error" id="l-err">Λάθος στοιχεία</div>
+  </div>
+</div>
+
+<!-- ══ APP ══ -->
+<div id="app">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="topbar-logo">🔥 VMRTIN26</div>
+      <div class="topbar-tag" id="topbar-role-tag">ADMIN</div>
+    </div>
+    <div class="topbar-right">
+      <button class="lang-btn" onclick="toggleLang()">EL/EN</button>
+      <button class="icon-btn" onclick="syncFromSheets()" title="Συγχρονισμός" style="font-size:14px">⟳</button>
+      <div class="user-pill" onclick="showChangePassword(currentUser.username)" title="Αλλαγή κωδικού">
+        <div class="user-avatar" id="user-avatar" style="background:#7f1d1d;color:#fca5a5;">A</div>
+        <span id="user-display" style="font-size:12px;color:#c0d0e0;">admin</span>
+      </div>
+      <button class="icon-btn" onclick="doLogout()" title="Έξοδος" style="font-size:14px">⏻</button>
+    </div>
+  </div>
+
+  <div class="main-content" id="main-content"></div>
+
+  <nav class="bottom-nav" id="bottom-nav">
+    <button class="nav-item active" onclick="showPage('dashboard')" id="nav-dashboard">
+      <span class="nav-icon">📊</span>
+      <span data-el="nav-home">Αρχική</span>
+    </button>
+    <button class="nav-item" onclick="showPage('detectors')" id="nav-detectors">
+      <span class="nav-icon">🔍</span>
+      <span data-el="nav-det">Ανιχνευτές</span>
+    </button>
+    <button class="nav-item" onclick="showPage('add')" id="nav-add">
+      <span class="nav-icon">➕</span>
+      <span data-el="nav-add">Καταχώρηση</span>
+    </button>
+    <button class="nav-item" onclick="showPage('stats')" id="nav-stats">
+      <span class="nav-icon">📈</span>
+      <span data-el="nav-stats">Στατιστικά</span>
+    </button>
+    <button class="nav-item" onclick="showPage('admin')" id="nav-admin">
+      <span class="nav-icon">⚙️</span>
+      <span data-el="nav-admin">Admin</span>
+    </button>
+  </nav>
+</div>
+
+<!-- ══ QR MODAL ══ -->
+<div class="modal-overlay" id="qr-modal">
+  <div class="modal-box">
+    <div class="modal-title">📷 QR Scan</div>
+    <div class="modal-sub" id="qr-sub">Σάρωσε το QR code ανιχνευτή ή πληκτρολόγησε TAG</div>
+    <div class="qr-placeholder">
+      <span>📷</span>
+      <span style="font-size:12px;color:var(--text3);font-family:var(--cond);">Camera</span>
+    </div>
+    <div class="qr-input-row">
+      <input type="text" class="field-input" id="qr-tag-input" placeholder="π.χ. 01-GD-001" style="margin:0;flex:1">
+      <button class="modal-ok" onclick="qrConfirm()" id="qr-ok-btn">ΟΚ</button>
+    </div>
+    <div style="height:8px;"></div>
+    <button class="modal-cancel" onclick="closeQR()">Ακύρωση</button>
+  </div>
+</div>
+
+<!-- ══ TOAST ══ -->
+<div class="toast" id="toast"></div>
+
+<!-- Hidden file input for Excel import -->
+<input type="file" id="excel-file-input" accept=".xlsx,.xlsm,.xls" style="display:none" onchange="handleFileImport(this)">
+
+<script>
+// ══════════════════════════════════════════
+// DATA
+// ══════════════════════════════════════════
+const USERS = {
+  admin: { passHash: '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918', role: 'admin',      name: 'Ευάγγελος Μαρτίνος', dept: 'Instruments Foreman' },
+  super: { passHash: '73d1b1b1bc1dabfb97f216d897b7968e44b06457920f00f2dc6c1ed3be25ad4c', role: 'supervisor', name: 'Supervisor',           dept: 'HSE / Διεύθυνση' },
+  tech1: { passHash: '2533dda9233d4762f02fe645f660b9ba17d95bfe4d3f663e299387b56a337a97', role: 'technician', name: 'Τεχνίτης 1',            dept: 'Instruments' },
+  tech2: { passHash: 'e5aac7a827cc60e66efd543e8176baef5ef9c389cb615a4a6c629060b9b1221c', role: 'technician', name: 'Τεχνίτης 2',            dept: 'Electrical' },
+  view1: { passHash: 'f3b798b55dcbd64af24f4d763786d95d780adfb2bde6631dbe20d64e728c9e35', role: 'readonly',   name: 'Read Only',            dept: 'Διεύθυνση' },
+};
+
+const ROLES = {
+  admin:      { label: 'ADMIN',      color: '#8a2010', text: '#fde8e0', canAdd: true,  canDelete: true,  canAdmin: true  },
+  supervisor: { label: 'SUPERVISOR', color: '#7a5800', text: '#fef8e0', canAdd: false, canDelete: false, canAdmin: false },
+  technician: { label: 'ΤΕΧΝΙΤΗΣ',  color: '#0a3a70', text: '#e0ecf8', canAdd: true,  canDelete: false, canAdmin: false },
+  readonly:   { label: 'READ-ONLY',  color: '#0a4a20', text: '#e0f4e8', canAdd: false, canDelete: false, canAdmin: false },
+};
+
+// Calibration intervals per category (months) — admin can change
+let CAL_INTERVALS = {
+  'ΕΎΦΛΕΚΤΑ ΑΕΡΙΑ': 4,
+  'ΕΥΦΛΕΚΤΑ ΑΕΡΙΑ': 4,
+  'ΤΟΞΙΚΑ ΑΕΡΙΑ': 4,
+  'ΟΞΥΓΟΝΟ': 6,
+  'ΑΕΡΙΑ ΚΤΗΡΙΩΝ': 12,
+  'HF/HEAT/FLAME/LASER': 12,
+  'ΚΑΠΝΟΣ ΚΤΙΡΙΩΝ': 12,
+  'DEFAULT': 6,
+};
+
+// ── DYNAMIC LISTS (Admin μπορεί να προσθέτει/αφαιρεί) ──
+let DET_TYPES = [
+  'GAS DETECTOR',
+  'FIRE DETECTOR',
+  'SMOKE DETECTOR',
+  'FLAME DETECTOR',
+  'HEAT DETECTOR',
+  'OXYGEN DETECTOR',
+  'TOXIC GAS DETECTOR',
+  'LHD CABLE',
+];
+
+let DET_AREAS = [
+  'C3','NNC','CDU/VDU','HYDRO','FCC','MHC',
+  'ΛΙΜΑΝΙ','ΑΠΟΘΗΚΗ','ΚΤΙΡΙΑ','ΓΕΝΙΚΗ ΧΡΗΣΗ','GENERAL',
+];
+
+let DET_CATEGORIES = Object.keys(CAL_INTERVALS).filter(k => k !== 'DEFAULT');
+
+// Load saved lists from localStorage
+function loadSavedLists() {
+  try {
+    const saved = localStorage.getItem('vmrtin26_lists');
+    if (saved) {
+      const p = JSON.parse(saved);
+      if (p.types)      DET_TYPES      = p.types;
+      if (p.areas)      DET_AREAS      = p.areas;
+      if (p.categories) DET_CATEGORIES = p.categories;
+      // Rebuild CAL_INTERVALS from saved categories
+      if (p.catIntervals) {
+        Object.entries(p.catIntervals).forEach(([k,v]) => { CAL_INTERVALS[k] = v; });
+        DET_CATEGORIES = Object.keys(CAL_INTERVALS).filter(k => k !== 'DEFAULT');
+      }
+    }
+  } catch(e) {}
+}
+
+function saveLists() {
+  try {
+    localStorage.setItem('vmrtin26_lists', JSON.stringify({
+      types: DET_TYPES,
+      areas: DET_AREAS,
+      categories: DET_CATEGORIES,
+      catIntervals: CAL_INTERVALS,
+    }));
+  } catch(e) {}
+}
+
+loadSavedLists();
+
+const getArea = tag => {
+  const p = tag.split('-')[0];
+  if (['44'].includes(p)) return 'C3';
+  if (['77','78','79','84'].includes(p)) return 'NNC';
+  if (['00','01','02','06','08'].includes(p)) return 'CDU/VDU';
+  if (['11','12','13'].includes(p)) return 'HYDRO';
+  if (['33','34'].includes(p)) return 'FCC';
+  if (['36','37','38'].includes(p)) return 'MHC';
+  return 'GENERAL';
+};
+
+// Ξεκινάει κενό — γεμίζει από Import Excel ή Google Sheets sync
+let DETECTORS = [];
+
+// Load saved detectors from localStorage (persists between sessions)
+function loadSavedDetectors() {
+  try {
+    const saved = localStorage.getItem('vmrtin26_detectors');
+    if (saved) {
+      DETECTORS = JSON.parse(saved);
+    }
+  } catch(e) {}
+}
+
+function saveDetectors() {
+  try {
+    localStorage.setItem('vmrtin26_detectors', JSON.stringify(DETECTORS));
+  } catch(e) {}
+}
+
+loadSavedDetectors();
+
+const TASK_OPTIONS = ['Βαθμονόμηση','Αλλαγή αισθητήρα','Αλλαγή κάρτας','Αλλαγή καλωδίου','Άλλο'];
+
+// ══════════════════════════════════════════
+// GOOGLE SHEETS API
+// ══════════════════════════════════════════
+const GS_URL = 'https://script.google.com/macros/s/AKfycby_FzEloxHFju_c-zvXiTq5Ottx64A-mKr8lt8itPQzv0kxbX6uNQkQcfFPXyeWLv4Ttg/exec';
+let gsConnected = false;
+let gsSyncing   = false;
+
+async function gsGet(params) {
+  const url = GS_URL + '?' + new URLSearchParams(params);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.json();
+}
+
+async function gsPost(data) {
+  // Apps Script deployed as web app requires text/plain to avoid CORS preflight
+  const res = await fetch(GS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.json();
+}
+
+// ── Load all data from Google Sheets ──
+async function syncFromSheets() {
+  if (gsSyncing) return;
+  gsSyncing = true;
+  showSyncStatus('⟳ Συγχρονισμός...');
+
+  try {
+    // Load detectors
+    const detRes = await gsGet({ action: 'getDetectors' });
+    if (detRes.detectors && detRes.detectors.length > 0) {
+      // Merge with local — remote wins for metadata
+      for (const remote of detRes.detectors) {
+        let local = DETECTORS.find(d => d.tag === remote.tag);
+        if (local) {
+          local.description = remote.description || local.description;
+          local.location    = remote.location    || local.location;
+          local.type        = remote.type        || local.type;
+          local.area        = remote.area        || local.area;
+          local.category    = remote.category    || local.category;
+          local.calInterval = remote.calInterval || local.calInterval;
+          local.nextCalDate = remote.nextCalDate || local.nextCalDate;
+        } else {
+          DETECTORS.push({ ...remote, entries: [] });
+        }
+      }
+    }
+
+    // Load all entries
+    const entRes = await gsGet({ action: 'getAllEntries' });
+    if (entRes.entries && entRes.entries.length > 0) {
+      // Clear demo entries and replace with real data
+      DETECTORS.forEach(d => d.entries = []);
+      for (const e of entRes.entries) {
+        const det = DETECTORS.find(d => d.tag === e.tag);
+        if (det) {
+          det.entries.push({
+            date:     e.date,
+            task:     e.task,
+            cylinder: e.cylinder,
+            tech:     e.tech,
+            notes:    e.notes,
+          });
+        }
+      }
+      // Sort entries by date
+      DETECTORS.forEach(d => d.entries.sort((a,b) => a.date.localeCompare(b.date)));
+    }
+
+    // Load users
+    const usrRes = await gsGet({ action: 'getUsers' });
+    if (usrRes.users && usrRes.users.length > 0) {
+      for (const u of usrRes.users) {
+        if (USERS[u.username]) {
+          USERS[u.username].passHash = u.passHash || USERS[u.username].passHash;
+          USERS[u.username].role     = u.role     || USERS[u.username].role;
+          USERS[u.username].name     = u.name     || USERS[u.username].name;
+        } else {
+          USERS[u.username] = {
+            passHash: u.passHash || '',
+            role:     u.role || 'readonly',
+            name:     u.name || u.username,
+            dept:     u.dept || '',
+          };
+        }
+      }
+    }
+
+    gsConnected = true;
+    showSyncStatus('✓ Συνδεδεμένο', 'ok');
+    if (currentPage) showPage(currentPage);
+
+  } catch(err) {
+    console.error('Sync error:', err);
+    gsConnected = false;
+    showSyncStatus('✗ Offline', 'err');
+  } finally {
+    gsSyncing = false;
+  }
+}
+
+// ── Save entry to Google Sheets ──
+async function gsSaveEntry(entry) {
+  if (!gsConnected) return;
+  try {
+    await gsPost({ action: 'addEntry', data: entry });
+  } catch(err) {
+    console.error('Save entry error:', err);
+    showToast('⚠ Αποθηκεύτηκε τοπικά — δεν έφτασε στο Sheet', 'error');
+  }
+}
+
+// ── Save detector to Google Sheets ──
+async function gsSaveDetector(det) {
+  if (!gsConnected) return;
+  try {
+    await gsPost({ action: 'addDetector', data: det });
+  } catch(err) {
+    console.error('Save detector error:', err);
+  }
+}
+
+// ── Update next cal date ──
+async function gsUpdateDetector(data) {
+  if (!gsConnected) return;
+  try {
+    await gsPost({ action: 'updateDetector', data });
+  } catch(err) {
+    console.error('Update detector error:', err);
+  }
+}
+
+// ── Save password hash ──
+async function gsSavePassword(username, hash) {
+  if (!gsConnected) return;
+  try {
+    await gsPost({ action: 'updatePassword', data: { username, passHash: hash } });
+  } catch(err) {
+    console.error('Save password error:', err);
+  }
+}
+
+// ── Sync indicator in topbar ──
+function showSyncStatus(msg, type) {
+  let el = document.getElementById('sync-status');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'sync-status';
+    el.style.cssText = 'font-family:var(--mono);font-size:10px;padding:3px 8px;border-radius:4px;transition:all 0.3s;';
+    document.querySelector('.topbar-left').appendChild(el);
+  }
+  el.textContent = msg;
+  el.style.background = type === 'ok'  ? 'rgba(30,122,66,0.3)'  :
+                        type === 'err' ? 'rgba(192,37,30,0.3)'  :
+                        'rgba(255,255,255,0.1)';
+  el.style.color = type === 'ok'  ? '#80d49a' :
+                   type === 'err' ? '#f07068' : '#a0b4cc';
+  el.style.border = `1px solid ${type === 'ok' ? 'rgba(30,122,66,0.4)' : type === 'err' ? 'rgba(192,37,30,0.4)' : 'rgba(255,255,255,0.15)'}`;
+}
+
+// ══════════════════════════════════════════
+// DATE HELPERS
+// ══════════════════════════════════════════
+function getIntervalMonths(det) {
+  if (det.calInterval) return det.calInterval;
+  return CAL_INTERVALS[det.category] || CAL_INTERVALS['DEFAULT'];
+}
+
+function getLastCalDate(det) {
+  if (!det.entries.length) return null;
+  const sorted = det.entries
+    .filter(e => e.task.toLowerCase().includes('βαθμονόμηση') || e.task.toLowerCase().includes('calib'))
+    .sort((a,b) => b.date.localeCompare(a.date));
+  if (sorted.length) return sorted[0].date;
+  // fallback: last entry
+  return det.entries.slice().sort((a,b) => b.date.localeCompare(a.date))[0].date;
+}
+
+function getNextCalDate(det) {
+  if (det.nextCalDate) return det.nextCalDate; // manually set
+  const last = getLastCalDate(det);
+  if (!last) return null;
+  const d = new Date(last);
+  d.setMonth(d.getMonth() + getIntervalMonths(det));
+  return d.toISOString().split('T')[0];
+}
+
+function getAlertStatus(det) {
+  const next = getNextCalDate(det);
+  if (!next) return 'none';
+  const today = new Date();
+  const nextD = new Date(next);
+  const diffDays = Math.round((nextD - today) / 86400000);
+  if (diffDays < 0)  return 'overdue';
+  if (diffDays <= 30) return 'soon';
+  return 'ok';
+}
+
+function getDaysUntil(dateStr) {
+  if (!dateStr) return null;
+  return Math.round((new Date(dateStr) - new Date()) / 86400000);
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('el-GR', { day:'2-digit', month:'2-digit', year:'numeric' });
+}
+
+// ══════════════════════════════════════════
+// EXCEL IMPORT (via SheetJS)
+// ══════════════════════════════════════════
+let sheetJsLoaded = false;
+
+function loadSheetJS(cb) {
+  if (sheetJsLoaded) { cb(); return; }
+  const s = document.createElement('script');
+  s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+  s.onload = () => { sheetJsLoaded = true; cb(); };
+  s.onerror = () => showToast('Σφάλμα φόρτωσης βιβλιοθήκης', 'error');
+  document.head.appendChild(s);
+}
+
+function triggerImport() {
+  document.getElementById('excel-file-input').click();
+}
+
+function handleFileImport(input) {
+  const file = input.files[0];
+  if (!file) return;
+  loadSheetJS(() => {
+    const reader = new FileReader();
+    reader.onload = e => parseExcelFile(e.target.result, file.name);
+    reader.readAsArrayBuffer(file);
+  });
+  input.value = ''; // reset so same file can be re-imported
+}
+
+function parseExcelFile(buffer, filename) {
+  try {
+    showToast('⟳ Ανάγνωση αρχείου...', 'info');
+    const wb = XLSX.read(buffer, { type: 'array', cellDates: true });
+
+    let imported = 0, updated = 0, entryCount = 0;
+    const sheetNames = wb.SheetNames.filter(n => n !== 'INDEX' && n.includes('-'));
+
+    // ── Read INDEX for metadata (Row 3 = headers, Row 4+ = data) ──
+    const indexData = {};
+    if (wb.SheetNames.includes('INDEX')) {
+      const ix = XLSX.utils.sheet_to_json(wb.Sheets['INDEX'], { header:1, defval:null });
+      // Row index 2 = headers, Row index 3+ = data
+      for (let r = 3; r < ix.length; r++) {
+        const row = ix[r];
+        if (!row || !row[1]) continue;
+        const tag = String(row[1]).trim();
+        if (!tag || tag === 'DETECTOR TAG') continue;
+        indexData[tag] = {
+          category:    row[0] ? String(row[0]).trim() : '',
+          location:    row[2] ? String(row[2]).trim() : '',
+          latestDate:  row[3] ? excelDateToStr(row[3]) : null,
+          nextCalDate: row[4] ? excelDateToStr(row[4]) : null,
+        };
+      }
+    }
+
+    // ── Process each detector sheet ──
+    for (const sheetName of sheetNames) {
+      const tag = sheetName.trim();
+      const ws  = wb.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:null, raw:false });
+
+      // Row 3 (index 2) = ΠΕΡΙΓΡΑΦΗ / LOCATION
+      // Row 4 (index 3) = ΤΥΠΟΣ (manufacturer)
+      const description = rows[2] && rows[2][1] ? String(rows[2][1]).trim() : '';
+      const typeVal     = rows[3] && rows[3][1] ? String(rows[3][1]).trim() : '';
+
+      // Row 9 (index 8) = column headers
+      // Detect column order from header row
+      const headerRow = rows[8] || [];
+      let colDate = 0, colTask = 1, colCyl = 2, colTech = 3, colNotes = 4;
+      headerRow.forEach((h, i) => {
+        if (!h) return;
+        const hs = String(h).toUpperCase();
+        if (hs.includes('ΗΜΕΡ') || hs.includes('DATE'))   colDate  = i;
+        if (hs.includes('ΕΡΓΑΣ') || hs.includes('TASK'))  colTask  = i;
+        if (hs.includes('ΦΙΑΛ') || hs.includes('CYL'))    colCyl   = i;
+        if (hs.includes('ΤΕΧΝ') || hs.includes('TECH') || hs.includes('NAME')) colTech = i;
+        if (hs.includes('ΣΗΜΕ') || hs.includes('NOTE') || hs.includes('ΤΥΠΟΣ')) colNotes = i;
+      });
+
+      // Parse entries from row 10+ (index 9)
+      const entries = [];
+      for (let r = 9; r < rows.length; r++) {
+        const row = rows[r];
+        if (!row || !row[colDate]) continue;
+        const dateStr = excelDateToStr(row[colDate]);
+        if (!dateStr) continue;
+
+        // Handle NNC format: col2=tech, no cylinder
+        const taskVal = row[colTask] ? String(row[colTask]).trim() : '';
+        const cylVal  = row[colCyl]  ? String(row[colCyl]).trim()  : '';
+        const techVal = row[colTech] ? String(row[colTech]).trim() : '';
+        const notesVal= row[colNotes]? String(row[colNotes]).trim(): '';
+
+        // Skip if cylinder value looks like a technician name (NNC has no cylinder col)
+        const isCylNum = cylVal && /^\d+$/.test(cylVal.replace(/[^\d]/g,'').slice(0,4));
+        const finalCyl  = isCylNum ? cylVal : '';
+        const finalTech = isCylNum ? techVal : (cylVal || techVal);
+
+        if (!taskVal && !finalTech) continue;
+
+        entries.push({ date: dateStr, task: taskVal, cylinder: finalCyl, tech: finalTech, notes: notesVal });
+      }
+
+      // ── Smart merge ──
+      let det = DETECTORS.find(d => d.tag === tag);
+      const meta = indexData[tag] || {};
+
+      if (det) {
+        let changed = false;
+        // Ενημερώνει metadata ΜΟΝΟ αν άλλαξε
+        if (meta.category    && meta.category    !== det.category)    { det.category    = meta.category;    changed = true; }
+        if (meta.location    && meta.location    !== det.location)    { det.location    = meta.location;    changed = true; }
+        if (meta.nextCalDate && meta.nextCalDate !== det.nextCalDate) { det.nextCalDate = meta.nextCalDate; changed = true; }
+        if (description      && description      !== det.description) { det.description = description;      changed = true; }
+
+        // Προσθέτει ΜΟΝΟ νέες εγγραφές
+        const existingKeys = new Set(det.entries.map(e => e.date + '|' + e.task));
+        for (const e of entries) {
+          if (!existingKeys.has(e.date + '|' + e.task)) {
+            det.entries.push(e);
+            entryCount++;
+            changed = true;
+          }
+        }
+        if (changed) updated++;
+      } else {
+        det = {
+          tag,
+          description,
+          manufacturer: typeVal,
+          location:     meta.location    || '',
+          area:         getArea(tag),
+          type:         'GAS',
+          category:     meta.category    || 'ΕΎΦΛΕΚΤΑ ΑΕΡΙΑ',
+          calInterval:  null,
+          nextCalDate:  meta.nextCalDate  || null,
+          entries,
+        };
+        DETECTORS.push(det);
+        entryCount += entries.length;
+        imported++;
+      }
+    }
+
+    // Sort entries by date
+    DETECTORS.forEach(d => d.entries.sort((a,b) => a.date.localeCompare(b.date)));
+
+    // Save to localStorage για persistence
+    saveDetectors();
+
+    // Push to Google Sheets if connected
+    if (gsConnected) {
+      const newDets = DETECTORS.slice(-imported);
+      gsPost({ action: 'importDetectors', data: newDets.map(d => ({
+        tag: d.tag, description: d.description||'', location: d.location||'',
+        type: d.type||'GAS', area: d.area||'', category: d.category||'',
+        calInterval: d.calInterval||'', nextCalDate: d.nextCalDate||'',
+      }))}).catch(()=>{});
+    }
+
+    showToast(`✓ ${filename}: ${imported} νέοι · ${updated} ενημερώθηκαν · ${entryCount} εγγραφές`);
+    if (currentPage) showPage(currentPage);
+
+  } catch(err) {
+    console.error('Import error:', err);
+    showToast('Σφάλμα import: ' + err.message, 'error');
+  }
+}
+
+function excelDateToStr(val) {
+  if (!val) return null;
+  if (val instanceof Date) {
+    const y = val.getFullYear();
+    const m = String(val.getMonth()+1).padStart(2,'0');
+    const d = String(val.getDate()).padStart(2,'0');
+    if (y < 1950 || y > 2100) return null;
+    return `${y}-${m}-${d}`;
+  }
+  if (typeof val === 'string') {
+    const ddmm = val.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
+    if (ddmm) return `${ddmm[3]}-${ddmm[2].padStart(2,'0')}-${ddmm[1].padStart(2,'0')}`;
+    const iso = val.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  }
+  return null;
+}
+
+// ══════════════════════════════════════════
+// CSV EXPORT για Google Sheets
+// ══════════════════════════════════════════
+function exportCSVForSheets(type) {
+  const BOM = '\uFEFF';
+  let csv = '', filename = '';
+
+  if (type === 'detectors') {
+    // DETECTORS tab
+    const headers = ['TAG','DESCRIPTION','LOCATION','TYPE','AREA','CATEGORY','CAL_INTERVAL','NEXT_CAL_DATE'];
+    const rows = DETECTORS.map(d => [
+      d.tag,
+      `"${(d.description||'').replace(/"/g,'""')}"`,
+      `"${(d.location||'').replace(/"/g,'""')}"`,
+      d.type || 'GAS',
+      d.area || '',
+      d.category || '',
+      d.calInterval || '',
+      d.nextCalDate || '',
+    ]);
+    csv = BOM + [headers.join(','), ...rows.map(r=>r.join(','))].join('\n');
+    filename = 'VMRTIN26_DETECTORS.csv';
+    showToast(`✓ ${DETECTORS.length} ανιχνευτές εξήχθησαν`);
+
+  } else if (type === 'entries') {
+    // ENTRIES tab
+    const headers = ['TAG','DATE','TASK','CYLINDER','TECHNICIAN','NOTES','TIMESTAMP'];
+    const rows = [];
+    DETECTORS.forEach(d => {
+      d.entries.forEach(e => {
+        rows.push([
+          d.tag,
+          e.date,
+          `"${(e.task||'').replace(/"/g,'""')}"`,
+          `"${(e.cylinder||'').replace(/"/g,'""')}"`,
+          `"${(e.tech||'').replace(/"/g,'""')}"`,
+          `"${(e.notes||'').replace(/"/g,'""')}"`,
+          new Date().toISOString(),
+        ]);
+      });
+    });
+    csv = BOM + [headers.join(','), ...rows.map(r=>r.join(','))].join('\n');
+    filename = 'VMRTIN26_ENTRIES.csv';
+    showToast(`✓ ${rows.length} εγγραφές εξήχθησαν`);
+  }
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ══════════════════════════════════════════
+// I18N
+// ══════════════════════════════════════════
+let lang = 'el';
+const T = {
+  el: {
+    'nav-home':'Αρχική','nav-det':'Ανιχνευτές','nav-add':'Καταχώρηση',
+    'nav-stats':'Στατιστικά','nav-admin':'Admin',
+    'dash-title':'Αρχική','dash-sub':'Επισκόπηση 2026',
+    'kpi-total':'ΣΥΝΟΛΟ','kpi-cal':'ΒΑΘΜ.','kpi-rep':'ΑΛΛΑΓΕΣ','kpi-pend':'ΕΚΚΡΕΜΟΥΝ',
+    'det-title':'Ανιχνευτές','det-sub':'Αναζήτηση & ιστορικό',
+    'add-title':'Νέα καταχώρηση','add-sub':'Εισαγωγή εργασίας',
+    'stats-title':'Στατιστικά','stats-sub':'Αναλυτική εικόνα',
+    'admin-title':'Διαχείριση','admin-sub':'Χρήστες & ρόλοι',
+    'search-ph':'Αναζήτηση TAG...',
+    'form-tag':'ΑΝΙΧΝΕΥΤΗΣ (TAG)','form-date':'ΗΜΕΡΟΜΗΝΙΑ',
+    'form-task':'ΤΥΠΟΣ ΕΡΓΑΣΙΑΣ','form-cyl':'ΦΙΑΛΗ ΑΝΑΦΟΡΑΣ',
+    'form-tech':'ΤΕΧΝΙΤΗΣ','form-notes':'ΣΗΜΕΙΩΣΕΙΣ',
+    'form-altro':'Περιγραφή άλλης εργασίας...',
+    'submit':'ΑΠΟΘΗΚΕΥΣΗ ΕΓΓΡΑΦΗΣ',
+    'no-perm':'Δεν έχεις δικαίωμα καταχώρησης',
+    'history':'ΙΣΤΟΡΙΚΟ','no-hist':'Δεν υπάρχουν εγγραφές',
+    'qr-sub':'Σάρωσε QR ή πληκτρολόγησε TAG',
+    'saved':'Η εγγραφή αποθηκεύτηκε!',
+    'all':'Όλα','area':'Περιοχή',
+  },
+  en: {
+    'nav-home':'Home','nav-det':'Detectors','nav-add':'Log Entry',
+    'nav-stats':'Stats','nav-admin':'Admin',
+    'dash-title':'Dashboard','dash-sub':'2026 Overview',
+    'kpi-total':'TOTAL','kpi-cal':'CALIB.','kpi-rep':'REPLACEM.','kpi-pend':'PENDING',
+    'det-title':'Detectors','det-sub':'Search & history',
+    'add-title':'New Entry','add-sub':'Log a task',
+    'stats-title':'Statistics','stats-sub':'Analytics',
+    'admin-title':'Administration','admin-sub':'Users & roles',
+    'search-ph':'Search TAG...',
+    'form-tag':'DETECTOR (TAG)','form-date':'DATE',
+    'form-task':'TASK TYPE','form-cyl':'REFERENCE CYLINDER',
+    'form-tech':'TECHNICIAN','form-notes':'NOTES',
+    'form-altro':'Describe other task...',
+    'submit':'SAVE ENTRY',
+    'no-perm':'No permission to add entries',
+    'history':'HISTORY','no-hist':'No entries found',
+    'qr-sub':'Scan QR or type TAG',
+    'saved':'Entry saved!',
+    'all':'All','area':'Area',
+  }
+};
+function t(k) { return (T[lang][k] || k); }
+
+function toggleLang() {
+  lang = lang === 'el' ? 'en' : 'el';
+  document.querySelectorAll('[data-el]').forEach(el => {
+    el.textContent = t(el.dataset.el);
+  });
+  if (currentPage) showPage(currentPage);
+}
+
+// ══════════════════════════════════════════
+// AUTH — SHA-256 HASHED PASSWORDS
+// ══════════════════════════════════════════
+
+// Passwords stored as SHA-256 hashes — never plain text
+// Default hash = SHA-256 of username (admin→admin, tech1→tech1 etc.)
+// Change passwords from Admin panel or user settings
+// To generate a new hash: hashPassword('newpassword').then(h => console.log(h))
+
+// ══════════════════════════════════════════
+// SHA-256 — δουλεύει και από file://
+// ══════════════════════════════════════════
+async function hashPassword(password) {
+  // Try crypto.subtle (https://)
+  if (window.crypto && window.crypto.subtle && window.location.protocol !== 'file:') {
+    const buf  = new TextEncoder().encode(password);
+    const hash = await window.crypto.subtle.digest('SHA-256', buf);
+    return Array.from(new Uint8Array(hash)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }
+  // Fallback: pure JS SHA-256 για file://
+  return sha256(password);
+}
+
+// Pure JS SHA-256 (για file://)
+function sha256(str) {
+  function rightRotate(value, amount) {
+    return (value >>> amount) | (value << (32 - amount));
+  }
+  const mathPow = Math.pow;
+  const maxWord = mathPow(2, 32);
+  let result = '';
+  const words = [];
+  const asciiBitLength = str.length * 8;
+  let hash = [];
+  let k = [];
+  let primeCounter = 0;
+  const isComposite = {};
+  for (let candidate = 2; primeCounter < 64; candidate++) {
+    if (!isComposite[candidate]) {
+      for (let i = candidate * candidate; i < 313; i += candidate) isComposite[i] = true;
+      hash[primeCounter] = (mathPow(candidate, 0.5) * maxWord) | 0;
+      k[primeCounter++]  = (mathPow(candidate, 1/3) * maxWord) | 0;
+    }
+  }
+  str += '\x80';
+  while (str.length % 64 - 56) str += '\x00';
+  for (let i = 0; i < str.length; i++) {
+    const j = str.charCodeAt(i);
+    if (j >> 8) return ''; // non-ASCII
+    words[i >> 2] |= j << ((3 - i) % 4) * 8;
+  }
+  words[words.length] = ((asciiBitLength / maxWord) | 0);
+  words[words.length] = (asciiBitLength | 0);
+  for (let j = 0; j < words.length;) {
+    const w = words.slice(j, j += 16);
+    const oldHash = [...hash];
+    for (let i = 0; i < 64; i++) {
+      const w15 = w[i-15], w2 = w[i-2];
+      const a = hash[0], e = hash[4];
+      const temp1 = hash[7]
+        + (rightRotate(e,6) ^ rightRotate(e,11) ^ rightRotate(e,25))
+        + ((e & hash[5]) ^ (~e & hash[6]))
+        + k[i]
+        + (w[i] = (i < 16) ? w[i] : (
+            w[i-16]
+            + (rightRotate(w15,7) ^ rightRotate(w15,18) ^ (w15>>>3))
+            + w[i-7]
+            + (rightRotate(w2,17) ^ rightRotate(w2,19) ^ (w2>>>10))
+          ) | 0);
+      const temp2 = (rightRotate(a,2) ^ rightRotate(a,13) ^ rightRotate(a,22))
+        + ((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2]));
+      hash = [(temp1+temp2)|0,...hash];
+      hash[4] = (hash[4]+temp1)|0;
+      hash.length = 8;
+    }
+    hash = hash.map((v,i) => (v+oldHash[i])|0);
+  }
+  hash.forEach(v => {
+    for (let i = 7; i >= 0; i--) result += ((v>>>(i*4)) & 0xf).toString(16);
+  });
+  return result;
+}
+
+// Load saved passwords from localStorage (override defaults)
+function loadSavedPasswords() {
+  try {
+    const saved = localStorage.getItem('vmrtin26_passwords');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      Object.entries(parsed).forEach(([u, hash]) => {
+        if (USERS[u]) USERS[u].passHash = hash;
+      });
+    }
+  } catch(e) {}
+}
+
+function savePasswordHash(username, hash) {
+  try {
+    const saved = JSON.parse(localStorage.getItem('vmrtin26_passwords') || '{}');
+    saved[username] = hash;
+    localStorage.setItem('vmrtin26_passwords', JSON.stringify(saved));
+  } catch(e) {}
+  // Also save to Google Sheets
+  gsSavePassword(username, hash);
+}
+
+// Initialize default hashes on first load
+async function initPasswords() {
+  // Passwords are pre-hashed in USERS — just load any overrides from localStorage
+  loadSavedPasswords();
+}
+
+let currentUser = null;
+let currentPage = null;
+let selectedDetector = null;
+let selectedTasks = [];
+
+// Load on startup
+initPasswords();
+
+async function doLogin() {
+  const u = document.getElementById('login-user').value.trim();
+  const p = document.getElementById('login-pass').value;
+  const user = USERS[u];
+  if (!user) { showLoginError(); return; }
+
+  const inputHash = await hashPassword(p);
+  if (inputHash === user.passHash) {
+    currentUser = { username: u, ...user };
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+    document.getElementById('app').style.flexDirection = 'column';
+    setupUser();
+    showPage('dashboard');
+    syncFromSheets();
+  } else {
+    showLoginError();
+  }
+}
+
+function showLoginError() {
+  const err = document.getElementById('login-error');
+  err.style.display = 'block';
+  err.textContent = lang === 'el' ? 'Λάθος στοιχεία' : 'Invalid credentials';
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    const ls = document.getElementById('login-screen');
+    if (ls && ls.style.display !== 'none') doLogin();
+  }
+});
+
+function doLogout() {
+  currentUser = null;
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('login-user').value = '';
+  document.getElementById('login-pass').value = '';
+  document.getElementById('login-error').style.display = 'none';
+}
+
+function setupUser() {
+  const role = ROLES[currentUser.role];
+  const tag = document.getElementById('topbar-role-tag');
+  tag.textContent = role.label;
+  tag.style.background = role.color;
+  tag.style.color = role.text;
+  tag.style.borderColor = role.color;
+  const avatar = document.getElementById('user-avatar');
+  avatar.textContent = currentUser.name[0];
+  avatar.style.background = role.color;
+  avatar.style.color = role.text;
+  document.getElementById('user-display').textContent = currentUser.username;
+  document.getElementById('nav-admin').style.display = ROLES[currentUser.role].canAdmin ? '' : 'none';
+  document.getElementById('nav-add').style.display   = ROLES[currentUser.role].canAdd   ? '' : 'none';
+}
+
+// ── CHANGE PASSWORD ──
+function showChangePassword(targetUser) {
+  // targetUser = username to change (admin can change any, others only own)
+  const isOwnPass = targetUser === currentUser.username;
+  const canChange = ROLES[currentUser.role].canAdmin || isOwnPass;
+  if (!canChange) { showToast('Δεν έχεις δικαίωμα', 'error'); return; }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay open';
+  overlay.id = 'chpass-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <div class="modal-title">🔑 Αλλαγή Κωδικού</div>
+      <div class="modal-sub" style="margin-bottom:16px">
+        Χρήστης: <span style="color:var(--accent);font-family:var(--mono)">${targetUser}</span>
+      </div>
+      ${isOwnPass && !ROLES[currentUser.role].canAdmin ? `
+      <label class="field-label">ΤΡΕΧΩΝ ΚΩΔΙΚΟΣ</label>
+      <input type="password" class="field-input" id="cp-old" placeholder="••••••••" style="margin-bottom:12px">
+      ` : ''}
+      <label class="field-label">ΝΕΟΣ ΚΩΔΙΚΟΣ</label>
+      <input type="password" class="field-input" id="cp-new" placeholder="••••••••" style="margin-bottom:12px">
+      <label class="field-label">ΕΠΙΒΕΒΑΙΩΣΗ</label>
+      <input type="password" class="field-input" id="cp-confirm" placeholder="••••••••" style="margin-bottom:16px">
+      <div id="cp-error" style="color:var(--red2);font-size:13px;margin-bottom:12px;display:none"></div>
+      <div style="display:flex;gap:8px">
+        <button class="modal-cancel" onclick="document.getElementById('chpass-overlay').remove()">Ακύρωση</button>
+        <button class="modal-ok" onclick="doChangePassword('${targetUser}','${isOwnPass && !ROLES[currentUser.role].canAdmin}')">ΑΛΛΑΓΗ</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  setTimeout(() => document.getElementById('cp-new')?.focus(), 100);
+}
+
+async function doChangePassword(targetUser, requireOld) {
+  const newPass    = document.getElementById('cp-new')?.value || '';
+  const confirmPass = document.getElementById('cp-confirm')?.value || '';
+  const oldPass    = document.getElementById('cp-old')?.value || '';
+  const errEl = document.getElementById('cp-error');
+
+  if (newPass.length < 4) {
+    errEl.textContent = 'Ο κωδικός πρέπει να έχει τουλάχιστον 4 χαρακτήρες'; errEl.style.display='block'; return;
+  }
+  if (newPass !== confirmPass) {
+    errEl.textContent = 'Οι κωδικοί δεν ταιριάζουν'; errEl.style.display='block'; return;
+  }
+
+  // Verify old password if required
+  if (requireOld === 'true') {
+    const oldHash = await hashPassword(oldPass);
+    if (oldHash !== USERS[targetUser].passHash) {
+      errEl.textContent = 'Λάθος τρέχων κωδικός'; errEl.style.display='block'; return;
+    }
+  }
+
+  const newHash = await hashPassword(newPass);
+  USERS[targetUser].passHash = newHash;
+  savePasswordHash(targetUser, newHash);
+  document.getElementById('chpass-overlay').remove();
+  showToast(`✓ Ο κωδικός του ${targetUser} άλλαξε`);
+}
+
+// ══════════════════════════════════════════
+// PAGES
+// ══════════════════════════════════════════
+function showPage(page) {
+  currentPage = page;
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const navEl = document.getElementById('nav-'+page);
+  if (navEl) navEl.classList.add('active');
+  const mc = document.getElementById('main-content');
+
+  if (page === 'dashboard') renderDashboard(mc);
+  else if (page === 'detectors') renderDetectors(mc);
+  else if (page === 'detector-detail') renderDetectorDetail(mc);
+  else if (page === 'add') renderAdd(mc);
+  else if (page === 'stats') renderStats(mc);
+  else if (page === 'admin') renderAdmin(mc);
+
+  mc.scrollTop = 0;
+}
+
+// ══ DASHBOARD ══
+function renderDashboard(mc) {
+  const total = DETECTORS.length;
+  const withEntries = DETECTORS.filter(d => d.entries.length > 0).length;
+  const repCount = DETECTORS.reduce((s,d) => s + d.entries.filter(e => e.task.includes('Αλλαγή')).length, 0);
+
+  const overdue = DETECTORS.filter(d => getAlertStatus(d) === 'overdue').length;
+  const soon    = DETECTORS.filter(d => getAlertStatus(d) === 'soon').length;
+  const okCount = DETECTORS.filter(d => getAlertStatus(d) === 'ok').length;
+  const noData  = DETECTORS.filter(d => getAlertStatus(d) === 'none').length;
+  // Upcoming this month & next month
+  const now = new Date();
+  const thisMonth = now.getMonth();
+  const thisYear  = now.getFullYear();
+  const upcomingThisMonth = DETECTORS.filter(d => {
+    const nd = getNextCalDate(d);
+    if (!nd) return false;
+    const dd = new Date(nd);
+    return dd.getFullYear() === thisYear && dd.getMonth() === thisMonth;
+  });
+  const upcomingNextMonth = DETECTORS.filter(d => {
+    const nd = getNextCalDate(d);
+    if (!nd) return false;
+    const dd = new Date(nd);
+    const nm = (thisMonth + 1) % 12;
+    const ny = thisMonth === 11 ? thisYear + 1 : thisYear;
+    return dd.getFullYear() === ny && dd.getMonth() === nm;
+  });
+
+  const recentEntries = [];
+  DETECTORS.forEach(d => d.entries.forEach(e => recentEntries.push({...e, tag: d.tag})));
+  recentEntries.sort((a,b) => b.date.localeCompare(a.date));
+  const recent = recentEntries.slice(0, 5);
+
+  const areaStats = {};
+  DETECTORS.forEach(d => {
+    if (!areaStats[d.area]) areaStats[d.area] = {total:0, done:0};
+    areaStats[d.area].total++;
+    if (d.entries.length > 0) areaStats[d.area].done++;
+  });
+
+  const monthNames = ['Ιαν','Φεβ','Μαρ','Απρ','Μαι','Ιουν','Ιουλ','Αυγ','Σεπ','Οκτ','Νοε','Δεκ'];
+
+  mc.innerHTML = `
+    <div class="page-header">
+      <div class="page-title">${t('dash-title')}</div>
+      <div class="page-sub">${t('dash-sub')} · ${new Date().toLocaleDateString('el-GR')}</div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:16px">
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:10px;border-top:3px solid var(--accent)">
+        <div style="font-family:var(--mono);font-size:22px;color:var(--accent2)">${total}</div>
+        <div style="font-size:10px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.5px">ΣΥΝΟΛΟ</div>
+      </div>
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:10px;border-top:3px solid var(--red)">
+        <div style="font-family:var(--mono);font-size:22px;color:var(--red2)">${overdue}</div>
+        <div style="font-size:10px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.5px">ΛΗΓΜΕΝΟΙ</div>
+      </div>
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:10px;border-top:3px solid var(--accent)">
+        <div style="font-family:var(--mono);font-size:22px;color:var(--accent2)">${soon}</div>
+        <div style="font-size:10px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.5px">≤30 ΜΕΡΕΣ</div>
+      </div>
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:10px;border-top:3px solid var(--green)">
+        <div style="font-family:var(--mono);font-size:22px;color:var(--green2)">${okCount}</div>
+        <div style="font-size:10px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.5px">ΕΝΤΟΣ</div>
+      </div>
+    </div>
+
+    ${upcomingThisMonth.length ? `
+    <div class="card" style="border-color:var(--accent);border-left:3px solid var(--accent)">
+      <div class="card-title" style="color:var(--accent)">⚠ ΑΥΤΟΝ ΤΟΝ ΜΗΝΑ — ${monthNames[thisMonth].toUpperCase()} ${thisYear} (${upcomingThisMonth.length})</div>
+      ${upcomingThisMonth.slice(0,8).map(d => {
+        const nd = getNextCalDate(d);
+        const days = getDaysUntil(nd);
+        const status = getAlertStatus(d);
+        return `
+        <div class="detector-item" onclick="openDetector('${d.tag}')" style="padding:8px 12px">
+          <div>
+            <div class="det-tag">${d.tag}</div>
+            <div class="det-area">${d.location || d.area}</div>
+          </div>
+          <div style="flex:1"></div>
+          <div style="text-align:right">
+            <div style="font-family:var(--mono);font-size:11px;color:${status==='overdue'?'var(--red2)':status==='soon'?'var(--accent2)':'var(--green2)'}">
+              ${formatDate(nd)}
+            </div>
+            <div style="font-size:10px;color:var(--text3)">${days < 0 ? Math.abs(days)+' μέρες πριν' : days === 0 ? 'ΣΗΜΕΡΑ' : days+' μέρες'}</div>
+          </div>
+          <span class="det-arrow" style="margin-left:8px">›</span>
+        </div>`;
+      }).join('')}
+      ${upcomingThisMonth.length > 8 ? `<div style="text-align:center;font-size:12px;color:var(--text3);padding:8px">+${upcomingThisMonth.length-8} ακόμα</div>` : ''}
+    </div>` : ''}
+
+    ${upcomingNextMonth.length ? `
+    <div class="card">
+      <div class="card-title">📅 ΕΠΟΜΕΝΟΣ ΜΗΝΑΣ — ${monthNames[(thisMonth+1)%12].toUpperCase()} (${upcomingNextMonth.length})</div>
+      ${upcomingNextMonth.slice(0,5).map(d => `
+        <div class="detector-item" onclick="openDetector('${d.tag}')" style="padding:8px 12px">
+          <div class="det-tag">${d.tag}</div>
+          <div style="flex:1"></div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--blue2)">${formatDate(getNextCalDate(d))}</div>
+          <span class="det-arrow" style="margin-left:8px">›</span>
+        </div>`).join('')}
+    </div>` : ''}
+
+    <div class="card">
+      <div class="card-title">ΚΑΛΥΨΗ ΑΝΑ ΠΕΡΙΟΧΗ</div>
+      ${Object.entries(areaStats).sort((a,b)=>b[1].total-a[1].total).map(([area, s]) => `
+        <div class="bar-row">
+          <div class="bar-label">${area}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${Math.round(s.done/s.total*100)}%;background:var(--accent);"></div></div>
+          <div class="bar-count" style="color:var(--accent);font-family:var(--mono);font-size:11px;">${s.done}/${s.total}</div>
+        </div>
+      `).join('')}
+    </div>
+
+    <div class="card">
+      <div class="card-title">ΤΕΛΕΥΤΑΙΕΣ ΕΓΓΡΑΦΕΣ</div>
+      ${recent.length ? recent.map(e => `
+        <div class="history-entry" onclick="openDetector('${e.tag}')" style="cursor:pointer">
+          <div class="hist-date">${e.date}</div>
+          <div class="hist-task">${e.task} <span style="font-family:var(--mono);font-size:12px;color:var(--accent)">${e.tag}</span></div>
+          <div class="hist-tech">${e.tech}</div>
+        </div>
+      `).join('') : `<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">${t('no-hist')}</div></div>`}
+    </div>
+  `;
+}
+
+// ══ DETECTORS ══
+let filterArea = 'all';
+let searchQ = '';
+
+function renderDetectors(mc) {
+  const areas = ['all', ...new Set(DETECTORS.map(d => d.area))];
+  const filtered = DETECTORS.filter(d => {
+    const areaOk = filterArea === 'all' || d.area === filterArea;
+    const searchOk = !searchQ || d.tag.toLowerCase().includes(searchQ.toLowerCase());
+    return areaOk && searchOk;
+  });
+
+  mc.innerHTML = `
+    <div class="page-header">
+      <div class="page-title">${t('det-title')}</div>
+      <div class="page-sub">${t('det-sub')} · ${filtered.length} ανιχνευτές</div>
+    </div>
+    <div class="search-wrap">
+      <input type="text" class="search-input" placeholder="${t('search-ph')}" value="${searchQ}" id="search-input" oninput="searchQ=this.value;renderDetectors(document.getElementById('main-content'))">
+      <button class="qr-btn" onclick="openQR('detectors')" title="QR Scan">📷</button>
+    </div>
+    <div class="filter-row">
+      ${areas.map(a => `<div class="filter-pill ${filterArea===a?'active':''}" onclick="filterArea='${a}';renderDetectors(document.getElementById('main-content'))">${a==='all'?t('all'):a}</div>`).join('')}
+    </div>
+    <div id="det-list">
+      ${filtered.map(d => {
+        const status = getAlertStatus(d);
+        const nextDate = getNextCalDate(d);
+        const days = getDaysUntil(nextDate);
+        const alertClass = status === 'overdue' ? 'alert-overdue' : status === 'soon' ? 'alert-soon' : status === 'ok' ? 'alert-ok' : 'alert-none';
+        const alertLabel = status === 'overdue' ? `${Math.abs(days)}μ πριν` : status === 'soon' ? `${days}μ` : status === 'ok' ? '✓' : '—';
+        return `
+          <div class="detector-item" onclick="openDetector('${d.tag}')">
+            <div style="flex:1;min-width:0">
+              <div class="det-tag">${d.tag}</div>
+              <div class="det-area">${d.location || d.area} · ${d.entries.length} εγγρ.</div>
+            </div>
+            <div style="text-align:right;margin-right:8px">
+              ${nextDate ? `<div style="font-family:var(--mono);font-size:10px;color:var(--text3)">${formatDate(nextDate)}</div>` : ''}
+            </div>
+            <span class="det-status ${alertClass}">${alertLabel}</span>
+            <span class="det-arrow">›</span>
+          </div>
+        `;
+      }).join('')}
+      ${filtered.length === 0 ? `<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-text">Δεν βρέθηκαν αποτελέσματα</div></div>` : ''}
+    </div>
+  `;
+}
+
+function openDetector(tag) {
+  selectedDetector = DETECTORS.find(d => d.tag === tag);
+  showPage('detector-detail');
+}
+
+function renderDetectorDetail(mc) {
+  const d = selectedDetector;
+  if (!d) { showPage('detectors'); return; }
+
+  const status = getAlertStatus(d);
+  const nextDate = getNextCalDate(d);
+  const days = getDaysUntil(nextDate);
+  const lastCal = getLastCalDate(d);
+  const interval = getIntervalMonths(d);
+
+  const alertColor = status === 'overdue' ? 'var(--red2)' : status === 'soon' ? 'var(--accent2)' : status === 'ok' ? 'var(--green2)' : 'var(--text3)';
+  const alertText  = status === 'overdue' ? `⚠ ΛΗΓΜΕΝΟ κατά ${Math.abs(days)} μέρες` :
+                     status === 'soon'    ? `⏰ Σε ${days} μέρες` :
+                     status === 'ok'      ? `✓ Εντός προγράμματος` : '— Δεν υπάρχει ημερομηνία';
+
+  mc.innerHTML = `
+    <button class="back-btn" onclick="showPage('detectors')">← ${t('det-title')}</button>
+    <div class="detail-header">
+      <div class="detail-tag">${d.tag}</div>
+      ${d.location ? `<div style="font-size:13px;color:var(--text2);margin:4px 0">${d.location}</div>` : ''}
+      <div class="detail-meta">
+        <span class="meta-badge ${d.type==='GAS'?'meta-gas':'meta-fire'}">${d.type}</span>
+        <span class="meta-badge meta-area">${d.area}</span>
+        <span class="meta-badge meta-area">${d.category || ''}</span>
+      </div>
+      <div style="margin-top:12px;padding:10px 12px;background:var(--bg3);border-radius:var(--radius);border-left:3px solid ${alertColor}">
+        <div style="font-size:12px;color:${alertColor};font-family:var(--cond);font-weight:600">${alertText}</div>
+        <div style="display:flex;gap:16px;margin-top:6px;font-size:12px;color:var(--text3)">
+          <span>Τελευταίος: <span style="color:var(--text2);font-family:var(--mono)">${formatDate(lastCal)}</span></span>
+          <span>Επόμενος: <span style="color:${alertColor};font-family:var(--mono)">${formatDate(nextDate)}</span></span>
+          <span>Interval: <span style="color:var(--text2)">${interval}μ</span></span>
+        </div>
+      </div>
+      ${ROLES[currentUser.role].canAdmin ? `
+      <div style="display:flex;align-items:center;gap:8px;margin-top:10px">
+        <span style="font-size:12px;color:var(--text3)">Interval:</span>
+        <select class="interval-select" onchange="setDetInterval('${d.tag}',this.value)">
+          <option value="2"  ${interval===2?'selected':''}>2 μήνες</option>
+          <option value="4"  ${interval===4?'selected':''}>4 μήνες</option>
+          <option value="6"  ${interval===6?'selected':''}>6 μήνες</option>
+          <option value="12" ${interval===12?'selected':''}>12 μήνες</option>
+        </select>
+        <span style="font-size:12px;color:var(--text3)">Επόμενος:</span>
+        <input type="date" class="form-input" style="width:140px;padding:4px 8px;font-size:12px"
+          value="${nextDate||''}" onchange="setDetNextDate('${d.tag}',this.value)">
+      </div>` : ''}
+    </div>
+    ${ROLES[currentUser.role].canAdd ? `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+      <button class="submit-btn" onclick="addForDetector('${d.tag}')">➕ Νέα εγγραφή</button>
+      <button class="submit-btn" onclick="exportPDF('detector')" style="background:var(--blue)">📄 PDF</button>
+    </div>
+    ` : `
+    <button class="submit-btn" onclick="exportPDF('detector')" style="background:var(--blue);margin-bottom:14px">📄 Εξαγωγή PDF</button>
+    `}
+    <div class="card-title" style="margin-bottom:10px">${t('history')}</div>
+    ${d.entries.length ? d.entries.slice().reverse().map(e => `
+      <div class="history-entry">
+        <div class="hist-date">📅 ${e.date}</div>
+        <div class="hist-task">🔧 ${e.task}</div>
+        <div class="hist-tech">👤 ${e.tech} ${e.cylinder ? `<span class="hist-cylinder">${e.cylinder}</span>` : ''}</div>
+        ${e.notes ? `<div class="hist-tech" style="margin-top:4px;font-style:italic">💬 ${e.notes}</div>` : ''}
+      </div>
+    `).join('') : `<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">${t('no-hist')}</div></div>`}
+  `;
+}
+
+function setDetInterval(tag, val) {
+  const det = DETECTORS.find(d => d.tag === tag);
+  if (det) {
+    det.calInterval = parseInt(val);
+    gsUpdateDetector({ tag, calInterval: parseInt(val) });
+    renderDetectorDetail(document.getElementById('main-content'));
+  }
+}
+
+function setDetNextDate(tag, val) {
+  const det = DETECTORS.find(d => d.tag === tag);
+  if (det) {
+    det.nextCalDate = val;
+    gsUpdateDetector({ tag, nextCalDate: val });
+    renderDetectorDetail(document.getElementById('main-content'));
+  }
+}
+
+function addForDetector(tag) {
+  selectedDetector = DETECTORS.find(d => d.tag === tag);
+  showPage('add');
+  setTimeout(() => {
+    const tagInput = document.getElementById('add-tag');
+    if (tagInput) tagInput.value = tag;
+  }, 50);
+}
+
+// ══ ADD ══
+function renderAdd(mc) {
+  if (!ROLES[currentUser.role].canAdd) {
+    mc.innerHTML = `<div class="empty-state" style="margin-top:60px"><div class="empty-icon">🔒</div><div class="empty-text">${t('no-perm')}</div></div>`;
+    return;
+  }
+
+  const today = new Date().toISOString().split('T')[0];
+  mc.innerHTML = `
+    <div class="page-header">
+      <div class="page-title">${t('add-title')}</div>
+      <div class="page-sub">${t('add-sub')}</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">${t('form-tag')}</label>
+      <div class="search-wrap" style="margin-bottom:0">
+        <input type="text" class="form-input" id="add-tag" placeholder="π.χ. 01-GD-001" list="tag-list" value="${selectedDetector ? selectedDetector.tag : ''}">
+        <button class="qr-btn" onclick="openQR('add')" title="QR">📷</button>
+      </div>
+      <datalist id="tag-list">${DETECTORS.map(d=>`<option value="${d.tag}">`).join('')}</datalist>
+    </div>
+    <div class="form-group">
+      <label class="form-label">${t('form-date')}</label>
+      <input type="date" class="form-input" id="add-date" value="${today}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">${t('form-task')}</label>
+      <div class="task-chips" id="task-chips">
+        ${TASK_OPTIONS.map((opt,i) => `
+          <div class="task-chip ${selectedTasks.includes(opt)?'selected':''}" onclick="toggleTask('${opt}')" id="chip-${i}">
+            <span class="chip-check">${selectedTasks.includes(opt)?'✓':'○'}</span>
+            <span>${opt}</span>
+          </div>
+        `).join('')}
+      </div>
+      <input type="text" class="altro-input ${selectedTasks.includes('Άλλο')?'show':''}" id="altro-text" placeholder="${t('form-altro')}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">${t('form-cyl')}</label>
+      <input type="text" class="form-input" id="add-cyl" placeholder="CYL-2024-XXX">
+    </div>
+    <div class="form-group">
+      <label class="form-label">${t('form-tech')}</label>
+      <input type="text" class="form-input" id="add-tech" value="${currentUser.name}" ${currentUser.role==='technician'?'readonly':''}>
+    </div>
+    <div class="form-group">
+      <label class="form-label">${t('form-notes')}</label>
+      <textarea class="form-input" id="add-notes" rows="2" style="resize:none;" placeholder="..."></textarea>
+    </div>
+    <button class="submit-btn" onclick="submitEntry()">${t('submit')}</button>
+  `;
+}
+
+function toggleTask(opt) {
+  if (selectedTasks.includes(opt)) {
+    selectedTasks = selectedTasks.filter(t => t !== opt);
+  } else {
+    selectedTasks.push(opt);
+  }
+  renderAdd(document.getElementById('main-content'));
+}
+
+function submitEntry() {
+  const tag = document.getElementById('add-tag').value.trim();
+  const date = document.getElementById('add-date').value;
+  const cyl = document.getElementById('add-cyl').value.trim();
+  const tech = document.getElementById('add-tech').value.trim();
+  const notes = document.getElementById('add-notes').value.trim();
+  const altro = document.getElementById('altro-text')?.value.trim() || '';
+
+  if (!tag || !date || selectedTasks.length === 0) {
+    showToast(lang==='el'?'Συμπλήρωσε TAG, ημερομηνία και τύπο εργασίας':'Fill in TAG, date and task type', 'error');
+    return;
+  }
+
+  let taskStr = selectedTasks.map(t => t === 'Άλλο' && altro ? altro : t).join(' | ');
+
+  let det = DETECTORS.find(d => d.tag === tag);
+  if (!det) {
+    det = { tag, area: getArea(tag), type: 'GAS', entries: [] };
+    DETECTORS.push(det);
+  }
+  det.entries.push({ date, task: taskStr, tech, cylinder: cyl, notes });
+
+  // Save to localStorage
+  saveDetectors();
+
+  // Save to Google Sheets
+  gsSaveEntry({
+    tag, date, task: taskStr, cylinder: cyl, tech, notes,
+    calInterval: getIntervalMonths(det),
+  });
+
+  // Auto-update next cal date if Βαθμονόμηση
+  if (taskStr.includes('Βαθμονόμηση')) {
+    const interval = getIntervalMonths(det);
+    const nextDate = new Date(date);
+    nextDate.setMonth(nextDate.getMonth() + interval);
+    det.nextCalDate = nextDate.toISOString().split('T')[0];
+    gsUpdateDetector({ tag, nextCalDate: det.nextCalDate });
+  }
+
+  selectedTasks = [];
+  selectedDetector = det;
+  showToast(t('saved'));
+  setTimeout(() => showPage('detector-detail'), 800);
+}
+
+// ══ STATS ══
+function renderStats(mc) {
+  const taskCount = {};
+  TASK_OPTIONS.forEach(t => taskCount[t] = 0);
+  taskCount['Άλλο/Σύνθετο'] = 0;
+  let total = 0;
+
+  DETECTORS.forEach(d => d.entries.forEach(e => {
+    total++;
+    const tasks = e.task.split('|').map(s=>s.trim());
+    tasks.forEach(task => {
+      const found = TASK_OPTIONS.find(o => task.includes(o));
+      if (found) taskCount[found] = (taskCount[found]||0) + 1;
+      else taskCount['Άλλο/Σύνθετο'] = (taskCount['Άλλο/Σύνθετο']||0) + 1;
+    });
+  }));
+
+  const areaStats = {};
+  DETECTORS.forEach(d => {
+    if (!areaStats[d.area]) areaStats[d.area] = {total:0,done:0};
+    areaStats[d.area].total++;
+    if (d.entries.length>0) areaStats[d.area].done++;
+  });
+
+  const maxTask = Math.max(...Object.values(taskCount), 1);
+  const taskColors = {
+    'Βαθμονόμηση':      '#1a5fa8',
+    'Αλλαγή αισθητήρα': '#c0251e',
+    'Αλλαγή κάρτας':    '#5a3a8a',
+    'Αλλαγή καλωδίου':  '#7a5800',
+    'Άλλο':             '#1a7a88',
+    'Άλλο/Σύνθετο':     '#1a7a88',
+  };
+
+  mc.innerHTML = `
+    <div class="page-header">
+      <div class="page-title">${t('stats-title')}</div>
+      <div class="page-sub">${t('stats-sub')} · ${total} εγγραφές</div>
+    </div>
+    <div class="card">
+      <div class="card-title">ΤΥΠΟΣ ΕΡΓΑΣΙΑΣ</div>
+      <div class="bar-chart-wrap">
+        ${Object.entries(taskCount).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).map(([label,count]) => `
+          <div class="bar-row">
+            <div class="bar-label">${label}</div>
+            <div class="bar-track"><div class="bar-fill" style="width:${Math.round(count/maxTask*100)}%;background:${taskColors[label]||'var(--accent)'};"></div></div>
+            <div class="bar-count">${count}</div>
+          </div>
+        `).join('')}
+        ${total === 0 ? `<div class="empty-state"><div class="empty-text">Δεν υπάρχουν δεδομένα</div></div>` : ''}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">ΚΑΛΥΨΗ ΑΝΑ ΠΕΡΙΟΧΗ</div>
+      ${Object.entries(areaStats).sort((a,b)=>b[1].total-a[1].total).map(([area,s]) => `
+        <div class="bar-row">
+          <div class="bar-label">${area}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${Math.round(s.done/s.total*100)}%;background:var(--green);"></div></div>
+          <div class="bar-count" style="color:var(--green2)">${Math.round(s.done/s.total*100)}%</div>
+        </div>
+      `).join('')}
+    </div>
+    <div class="card">
+      <div class="card-title">ΣΥΝΟΨΗ</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div style="background:var(--bg3);border-radius:8px;padding:12px">
+          <div style="font-family:var(--mono);font-size:20px;color:var(--accent)">${DETECTORS.length}</div>
+          <div style="font-size:11px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.5px">ΣΥΝΟΛΟ ΑΝΙΧΝ.</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:8px;padding:12px">
+          <div style="font-family:var(--mono);font-size:20px;color:var(--green2)">${DETECTORS.filter(d=>d.entries.length>0).length}</div>
+          <div style="font-size:11px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.5px">ΟΛΟΚΛΗΡΩΘΗΚΑΝ</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:8px;padding:12px">
+          <div style="font-family:var(--mono);font-size:20px;color:var(--blue2)">${total}</div>
+          <div style="font-size:11px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.5px">ΣΥΝΟΛΟ ΕΓΓΡΑΦΩΝ</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:8px;padding:12px">
+          <div style="font-family:var(--mono);font-size:20px;color:var(--red2)">${DETECTORS.filter(d=>d.entries.length===0).length}</div>
+          <div style="font-size:11px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.5px">ΕΚΚΡΕΜΟΥΝ</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ══ ADMIN ══
+function renderAdmin(mc) {
+  if (!ROLES[currentUser.role].canAdmin) {
+    mc.innerHTML = `<div class="empty-state" style="margin-top:60px"><div class="empty-icon">🔒</div><div class="empty-text">Δεν έχεις πρόσβαση</div></div>`;
+    return;
+  }
+
+  mc.innerHTML = `
+    <div class="page-header">
+      <div class="page-title">${t('admin-title')}</div>
+      <div class="page-sub">${t('admin-sub')}</div>
+    </div>
+
+    <!-- IMPORT -->
+    <div class="card" style="border-color:var(--accent);border-top:2px solid var(--accent)">
+      <div class="card-title" style="color:var(--accent)">📂 IMPORT EXCEL / XLSM</div>
+      <div class="drop-zone" onclick="triggerImport()">
+        <div class="drop-zone-icon">📊</div>
+        <div class="drop-zone-text">Άνοιξε αρχείο Excel</div>
+        <div class="drop-zone-sub">Υποστηρίζει .xlsx και .xlsm · Όλα τα αρχεία σου (FINAL, C3, NNC)</div>
+        <div class="drop-zone-sub" style="margin-top:6px;color:var(--accent2)">Δεν διαγράφει υπάρχοντα δεδομένα</div>
+      </div>
+      <div style="margin-top:10px;font-size:12px;color:var(--text3)">
+        Σύνολο ανιχνευτών στην εφαρμογή: <span style="color:var(--accent);font-family:var(--mono);font-weight:600">${DETECTORS.length}</span>
+      </div>
+      <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
+        <div style="font-size:11px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.5px;margin-bottom:8px">EXPORT ΓΙΑ GOOGLE SHEETS</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <button onclick="exportCSVForSheets('detectors')"
+            style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text2);padding:8px;font-family:var(--cond);font-weight:600;font-size:12px;cursor:pointer">
+            📥 CSV Ανιχνευτές
+          </button>
+          <button onclick="exportCSVForSheets('entries')"
+            style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text2);padding:8px;font-family:var(--cond);font-weight:600;font-size:12px;cursor:pointer">
+            📥 CSV Εγγραφές
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+      <button class="submit-btn" onclick="showNewDetectorModal()" style="background:var(--green);color:#fff">
+        ➕ Νέος Ανιχνευτής
+      </button>
+      <button class="submit-btn" onclick="showMonthlyExportModal()" style="background:var(--accent);color:#fff">
+        📋 Μηνιαία Αναφορά
+      </button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+      <button class="submit-btn" onclick="exportPDF('all')" style="background:var(--blue);color:#fff">
+        📄 Export Όλοι
+      </button>
+      <button class="submit-btn" onclick="exportPDF('upcoming')" style="background:var(--purple);color:#fff">
+        📅 Λήγουν 30 μέρες
+      </button>
+    </div>
+
+    <!-- INTERVALS PER CATEGORY -->
+    <div class="card">
+      <div class="card-title">⏱ ΔΙΑΣΤΗΜΑΤΑ ΒΑΘΜΟΝΟΜΗΣΗΣ ΑΝΑ ΚΑΤΗΓΟΡΙΑ</div>
+      ${DET_CATEGORIES.map(cat => `
+        <div class="interval-row">
+          <div class="interval-label">${cat}</div>
+          <select class="interval-select" onchange="updateInterval('${cat}',this.value)">
+            <option value="2"  ${CAL_INTERVALS[cat]===2?'selected':''}>2 μήνες</option>
+            <option value="4"  ${CAL_INTERVALS[cat]===4?'selected':''}>4 μήνες</option>
+            <option value="6"  ${CAL_INTERVALS[cat]===6?'selected':''}>6 μήνες</option>
+            <option value="12" ${CAL_INTERVALS[cat]===12?'selected':''}>12 μήνες</option>
+          </select>
+        </div>
+      `).join('')}
+      <div class="interval-row">
+        <div class="interval-label" style="color:var(--text3)">DEFAULT (όλα τα άλλα)</div>
+        <select class="interval-select" onchange="updateInterval('DEFAULT',this.value)">
+          <option value="2"  ${CAL_INTERVALS['DEFAULT']===2?'selected':''}>2 μήνες</option>
+          <option value="4"  ${CAL_INTERVALS['DEFAULT']===4?'selected':''}>4 μήνες</option>
+          <option value="6"  ${CAL_INTERVALS['DEFAULT']===6?'selected':''}>6 μήνες</option>
+          <option value="12" ${CAL_INTERVALS['DEFAULT']===12?'selected':''}>12 μήνες</option>
+        </select>
+      </div>
+      <button onclick="addListItem('category')"
+        style="margin-top:10px;width:100%;background:var(--bg3);border:1px dashed var(--border2);border-radius:var(--radius);color:var(--accent);padding:8px;font-family:var(--cond);font-weight:600;font-size:13px;cursor:pointer;letter-spacing:0.5px">
+        + Νέα Κατηγορία
+      </button>
+    </div>
+
+    <!-- LISTS MANAGEMENT -->
+    <div class="card">
+      <div class="card-title">📋 ΔΙΑΧΕΙΡΙΣΗ ΛΙΣΤΩΝ</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <button onclick="showListManager('type')"
+          style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text2);padding:10px;font-family:var(--cond);font-weight:600;font-size:13px;cursor:pointer">
+          🔧 Τύποι (${DET_TYPES.length})
+        </button>
+        <button onclick="showListManager('area')"
+          style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text2);padding:10px;font-family:var(--cond);font-weight:600;font-size:13px;cursor:pointer">
+          📍 Περιοχές (${DET_AREAS.length})
+        </button>
+      </div>
+    </div>
+
+    <!-- USERS -->
+    <div class="card">
+      <div class="card-title">ΧΡΗΣΤΕΣ & ΡΟΛΟΙ</div>
+      ${Object.entries(USERS).map(([uname, u]) => `
+        <div class="user-row">
+          <div class="user-avatar" style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--cond);font-weight:700;background:${ROLES[u.role].color};color:${ROLES[u.role].text};flex-shrink:0">${u.name[0]}</div>
+          <div class="user-info">
+            <div class="user-name">${u.name}</div>
+            <div class="user-username">${uname} · ${u.dept}</div>
+          </div>
+          <select class="role-select" onchange="changeRole('${uname}',this.value)">
+            ${Object.entries(ROLES).map(([r,rd]) => `<option value="${r}" ${u.role===r?'selected':''}>${rd.label}</option>`).join('')}
+          </select>
+          <button onclick="showChangePassword('${uname}')" style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text3);padding:4px 8px;font-size:12px;cursor:pointer;margin-left:4px;flex-shrink:0" title="Αλλαγή κωδικού">🔑</button>
+        </div>
+      `).join('')}
+    </div>
+
+    <div class="card">
+      <div class="card-title">ΠΡΟΣΘΗΚΗ ΧΡΗΣΤΗ</div>
+      <div class="form-group">
+        <label class="form-label">USERNAME</label>
+        <input type="text" class="form-input" id="new-uname" placeholder="π.χ. tech3">
+      </div>
+      <div class="form-group">
+        <label class="form-label">ΟΝΟΜΑ</label>
+        <input type="text" class="form-input" id="new-name" placeholder="Όνομα Επώνυμο">
+      </div>
+      <div class="form-group">
+        <label class="form-label">ΚΩΔΙΚΟΣ</label>
+        <input type="password" class="form-input" id="new-pass" placeholder="••••••">
+      </div>
+      <div class="form-group">
+        <label class="form-label">ΡΟΛΟΣ</label>
+        <select class="form-input" id="new-role">
+          ${Object.entries(ROLES).map(([r,rd]) => `<option value="${r}">${rd.label}</option>`).join('')}
+        </select>
+      </div>
+      <button class="submit-btn" onclick="addUser()">ΠΡΟΣΘΗΚΗ ΧΡΗΣΤΗ</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">ΡΟΛΟΙ & ΔΙΚΑΙΩΜΑΤΑ</div>
+      <table style="width:100%;font-size:12px;border-collapse:collapse">
+        <tr style="color:var(--text3);font-family:var(--cond);font-size:11px;letter-spacing:0.5px">
+          <td style="padding:6px 0">ΡΟΛΟΣ</td>
+          <td style="padding:6px 4px;text-align:center">ΚΑΤΑΧ.</td>
+          <td style="padding:6px 4px;text-align:center">ΔΙΑΓΡ.</td>
+          <td style="padding:6px 4px;text-align:center">ADMIN</td>
+        </tr>
+        ${Object.entries(ROLES).map(([r,rd]) => `
+          <tr style="border-top:1px solid var(--border)">
+            <td style="padding:8px 0"><span class="role-badge ${r==='admin'?'role-admin':r==='supervisor'?'role-super':r==='technician'?'role-tech':'role-view'}">${rd.label}</span></td>
+            <td style="text-align:center;color:${rd.canAdd?'var(--green2)':'var(--red2)'}">${rd.canAdd?'✓':'✗'}</td>
+            <td style="text-align:center;color:${rd.canDelete?'var(--green2)':'var(--red2)'}">${rd.canDelete?'✓':'✗'}</td>
+            <td style="text-align:center;color:${rd.canAdmin?'var(--green2)':'var(--red2)'}">${rd.canAdmin?'✓':'✗'}</td>
+          </tr>
+        `).join('')}
+      </table>
+    </div>
+  `;
+}
+
+function showListManager(listType) {
+  const labels  = { type: 'Τύποι Ανιχνευτών', area: 'Περιοχές' };
+  const getList = () => listType === 'type' ? DET_TYPES : DET_AREAS;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay open';
+  overlay.id = 'listmgr-overlay';
+
+  const renderItems = () => {
+    const list = getList();
+    return list.map((item, i) => `
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+        <span style="flex:1;font-size:13px;font-family:var(--cond);font-weight:600">${item}</span>
+        <button onclick="removeListItem('${listType}',${i})"
+          style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--red2);padding:3px 8px;cursor:pointer;font-size:12px">✕</button>
+      </div>
+    `).join('');
+  };
+
+  overlay.innerHTML = `
+    <div class="modal-box" style="text-align:left;max-height:80vh;overflow-y:auto">
+      <div class="modal-title" style="margin-bottom:16px">📋 ${labels[listType]}</div>
+      <div id="listmgr-items">${renderItems()}</div>
+      <button onclick="addListItem('${listType}')"
+        style="margin-top:12px;width:100%;background:var(--bg3);border:1px dashed var(--border2);border-radius:var(--radius);color:var(--accent);padding:8px;font-family:var(--cond);font-weight:600;font-size:13px;cursor:pointer">
+        + Προσθήκη
+      </button>
+      <button class="modal-cancel" style="width:100%;margin-top:8px" onclick="document.getElementById('listmgr-overlay').remove()">Κλείσιμο</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+}
+
+function removeListItem(listType, index) {
+  if (listType === 'type')     { DET_TYPES.splice(index, 1); }
+  else if (listType === 'area') { DET_AREAS.splice(index, 1); }
+  saveLists();
+  // Refresh manager
+  document.getElementById('listmgr-overlay')?.remove();
+  showListManager(listType);
+  showToast('Αφαιρέθηκε');
+}
+
+function updateInterval(cat, val) {
+  if (!DET_CATEGORIES.includes(cat)) DET_CATEGORIES.push(cat);
+  saveLists();
+  showToast(`Interval για "${cat}": ${val} μήνες`);
+}
+
+// Προσθήκη νέας τιμής σε λίστα (Τύπος / Περιοχή / Κατηγορία)
+function addListItem(listType) {
+  const labels = { type: 'Τύπος ανιχνευτή', area: 'Περιοχή', category: 'Κατηγορία' };
+  const placeholders = { type: 'π.χ. OXYGEN DETECTOR', area: 'π.χ. ΛΙΜΑΝΙ', category: 'π.χ. ΟΞΥΓΟΝΟ' };
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay open';
+  overlay.id = 'addlist-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box" style="text-align:left">
+      <div class="modal-title" style="margin-bottom:12px">➕ Νέο: ${labels[listType]}</div>
+      <label class="field-label">ΤΙΜΗ</label>
+      <input type="text" class="field-input" id="addlist-val"
+        placeholder="${placeholders[listType]}" style="margin-bottom:${listType==='category'?'10px':'16px'}">
+      ${listType === 'category' ? `
+      <label class="field-label">INTERVAL ΒΑΘΜΟΝΟΜΗΣΗΣ</label>
+      <select class="field-input" id="addlist-interval" style="margin-bottom:16px">
+        <option value="2">2 μήνες</option>
+        <option value="4">4 μήνες</option>
+        <option value="6" selected>6 μήνες</option>
+        <option value="12">12 μήνες</option>
+      </select>` : ''}
+      <div style="display:flex;gap:8px">
+        <button class="modal-cancel" onclick="document.getElementById('addlist-overlay').remove()">Ακύρωση</button>
+        <button class="modal-ok" onclick="confirmAddListItem('${listType}')">ΠΡΟΣΘΗΚΗ</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  setTimeout(() => document.getElementById('addlist-val')?.focus(), 100);
+}
+
+function confirmAddListItem(listType) {
+  const val = document.getElementById('addlist-val')?.value.trim().toUpperCase();
+  if (!val) { showToast('Συμπλήρωσε τιμή','error'); return; }
+
+  if (listType === 'type') {
+    if (!DET_TYPES.includes(val)) { DET_TYPES.push(val); saveLists(); }
+  } else if (listType === 'area') {
+    if (!DET_AREAS.includes(val)) { DET_AREAS.push(val); saveLists(); }
+  } else if (listType === 'category') {
+    const interval = parseInt(document.getElementById('addlist-interval')?.value || '6');
+    if (!DET_CATEGORIES.includes(val)) { DET_CATEGORIES.push(val); }
+    CAL_INTERVALS[val] = interval;
+    saveLists();
+  }
+
+  document.getElementById('addlist-overlay').remove();
+  showToast(`✓ Προστέθηκε: ${val}`);
+
+  // Refresh new detector modal if open
+  const ndOverlay = document.getElementById('newdet-overlay');
+  if (ndOverlay) {
+    ndOverlay.remove();
+    showNewDetectorModal();
+  }
+  // Refresh admin if open
+  if (currentPage === 'admin') renderAdmin(document.getElementById('main-content'));
+}
+
+function changeRole(uname, newRole) {
+  USERS[uname].role = newRole;
+  showToast(lang==='el'?`Ο ρόλος του ${uname} ενημερώθηκε`:`Role updated for ${uname}`);
+}
+
+async function addUser() {
+  const uname = document.getElementById('new-uname').value.trim();
+  const name  = document.getElementById('new-name').value.trim();
+  const pass  = document.getElementById('new-pass').value;
+  const role  = document.getElementById('new-role').value;
+  if (!uname || !name || !pass) { showToast('Συμπλήρωσε όλα τα πεδία','error'); return; }
+  if (USERS[uname]) { showToast('Υπάρχει ήδη αυτό το username','error'); return; }
+  const hash = await hashPassword(pass);
+  USERS[uname] = { passHash: hash, role, name, dept: '' };
+  savePasswordHash(uname, hash);
+  showToast(`✓ Ο χρήστης ${uname} προστέθηκε`);
+  renderAdmin(document.getElementById('main-content'));
+}
+
+// ══════════════════════════════════════════
+// ΝΕΟΣ ΑΝΙΧΝΕΥΤΗΣ
+// ══════════════════════════════════════════
+function showNewDetectorModal() {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα','error'); return; }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay open';
+  overlay.id = 'newdet-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box" style="max-width:400px;text-align:left;max-height:90vh;overflow-y:auto">
+      <div class="modal-title" style="margin-bottom:16px">➕ Νέος Ανιχνευτής</div>
+
+      <label class="field-label">TAG *</label>
+      <input type="text" class="field-input" id="nd-tag" placeholder="π.χ. 44-GD-099" style="margin-bottom:10px">
+
+      <label class="field-label">ΠΕΡΙΓΡΑΦΗ</label>
+      <input type="text" class="field-input" id="nd-desc" placeholder="π.χ. Gas Detector Pump Area" style="margin-bottom:10px">
+
+      <label class="field-label">ΤΟΠΟΘΕΣΙΑ</label>
+      <input type="text" class="field-input" id="nd-loc" placeholder="π.χ. C3 Unit - Area 44" style="margin-bottom:10px">
+
+      <label class="field-label">ΤΥΠΟΣ</label>
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <select class="field-input" id="nd-type" style="margin:0;flex:1">
+          ${DET_TYPES.map(t=>`<option value="${t}">${t}</option>`).join('')}
+        </select>
+        <button onclick="addListItem('type')" style="background:var(--accent);border:none;border-radius:var(--radius);color:#fff;padding:0 10px;cursor:pointer;font-size:16px;flex-shrink:0">+</button>
+      </div>
+
+      <label class="field-label">ΠΕΡΙΟΧΗ</label>
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <select class="field-input" id="nd-area" style="margin:0;flex:1">
+          ${DET_AREAS.map(a=>`<option value="${a}">${a}</option>`).join('')}
+        </select>
+        <button onclick="addListItem('area')" style="background:var(--accent);border:none;border-radius:var(--radius);color:#fff;padding:0 10px;cursor:pointer;font-size:16px;flex-shrink:0">+</button>
+      </div>
+
+      <label class="field-label">ΚΑΤΗΓΟΡΙΑ</label>
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <select class="field-input" id="nd-cat" style="margin:0;flex:1">
+          ${DET_CATEGORIES.map(c=>`<option value="${c}">${c}</option>`).join('')}
+        </select>
+        <button onclick="addListItem('category')" style="background:var(--accent);border:none;border-radius:var(--radius);color:#fff;padding:0 10px;cursor:pointer;font-size:16px;flex-shrink:0">+</button>
+      </div>
+
+      <label class="field-label">INTERVAL ΒΑΘΜΟΝΟΜΗΣΗΣ</label>
+      <select class="field-input" id="nd-interval" style="margin-bottom:10px">
+        <option value="">Από κατηγορία (default)</option>
+        <option value="2">2 μήνες</option>
+        <option value="4">4 μήνες</option>
+        <option value="6">6 μήνες</option>
+        <option value="12">12 μήνες</option>
+      </select>
+
+      <label class="field-label">ΕΠΟΜΕΝΗ ΒΑΘΜΟΝΟΜΗΣΗ</label>
+      <input type="date" class="field-input" id="nd-nextcal" style="margin-bottom:16px">
+
+      <div id="nd-error" style="color:var(--red2);font-size:13px;margin-bottom:10px;display:none"></div>
+      <div style="display:flex;gap:8px">
+        <button class="modal-cancel" onclick="document.getElementById('newdet-overlay').remove()">Ακύρωση</button>
+        <button class="modal-ok" onclick="submitNewDetector()">ΠΡΟΣΘΗΚΗ</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  setTimeout(() => document.getElementById('nd-tag')?.focus(), 100);
+}
+
+function submitNewDetector() {
+  const tag      = document.getElementById('nd-tag').value.trim().toUpperCase();
+  const desc     = document.getElementById('nd-desc').value.trim();
+  const loc      = document.getElementById('nd-loc').value.trim();
+  const type     = document.getElementById('nd-type').value;
+  const area     = document.getElementById('nd-area').value;
+  const cat      = document.getElementById('nd-cat').value;
+  const interval = document.getElementById('nd-interval').value;
+  const nextCal  = document.getElementById('nd-nextcal').value;
+  const errEl    = document.getElementById('nd-error');
+
+  if (!tag) { errEl.textContent='Το TAG είναι υποχρεωτικό'; errEl.style.display='block'; return; }
+  if (DETECTORS.find(d=>d.tag===tag)) {
+    errEl.textContent=`Ο ανιχνευτής ${tag} υπάρχει ήδη`; errEl.style.display='block'; return;
+  }
+
+  DETECTORS.push({
+    tag, description: desc, location: loc, type, area,
+    category: cat, calInterval: interval ? parseInt(interval) : null,
+    nextCalDate: nextCal || null, entries: []
+  });
+
+  // Save to Google Sheets
+  gsSaveDetector({ tag, description: desc, location: loc, type, area,
+    category: cat, calInterval: interval || '', nextCalDate: nextCal || '' });
+
+  // Save to localStorage
+  saveDetectors();
+
+  document.getElementById('newdet-overlay').remove();
+  showToast(`✓ Ανιχνευτής ${tag} προστέθηκε`);
+  // Open the new detector
+  selectedDetector = DETECTORS[DETECTORS.length-1];
+  showPage('detector-detail');
+}
+
+// ══════════════════════════════════════════
+// PDF EXPORT
+// ══════════════════════════════════════════
+function showMonthlyExportModal() {
+  const now = new Date();
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay open';
+  overlay.id = 'monthly-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box" style="text-align:left">
+      <div class="modal-title" style="margin-bottom:16px">📋 Μηνιαία Εξαγωγή</div>
+      <label class="field-label">ΜΗΝΑΣ</label>
+      <input type="month" class="field-input" id="mo-month"
+        value="${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}"
+        style="margin-bottom:16px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <button class="modal-ok" onclick="exportMonthly('pdf')">📄 PDF</button>
+        <button class="modal-ok" onclick="exportMonthly('excel')" style="background:var(--green)">📊 Excel</button>
+      </div>
+      <button class="modal-cancel" style="width:100%;margin-top:4px" onclick="document.getElementById('monthly-overlay').remove()">Ακύρωση</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+}
+
+function exportMonthly(format) {
+  const mo = document.getElementById('mo-month')?.value;
+  if (!mo) { showToast('Επίλεξε μήνα','error'); return; }
+  const [year, month] = mo.split('-').map(Number);
+  document.getElementById('monthly-overlay')?.remove();
+
+  // Collect all entries for that month
+  const monthEntries = [];
+  DETECTORS.forEach(d => {
+    d.entries.forEach(e => {
+      const [ey, em] = e.date.split('-').map(Number);
+      if (ey === year && em === month) {
+        monthEntries.push({
+          tag: d.tag,
+          description: d.description || d.location || d.area,
+          date: e.date,
+          task: e.task,
+          tech: e.tech,
+          cylinder: e.cylinder || '',
+          notes: e.notes || '',
+        });
+      }
+    });
+  });
+
+  monthEntries.sort((a,b) => a.date.localeCompare(b.date));
+
+  const monthNames = ['','Ιανουαρίου','Φεβρουαρίου','Μαρτίου','Απριλίου','Μαΐου','Ιουνίου',
+    'Ιουλίου','Αυγούστου','Σεπτεμβρίου','Οκτωβρίου','Νοεμβρίου','Δεκεμβρίου'];
+  const monthLabel = `${monthNames[month]} ${year}`;
+
+  if (format === 'pdf') exportMonthlyPDF(monthEntries, monthLabel, month, year);
+  else exportMonthlyExcel(monthEntries, monthLabel, month, year);
+}
+
+function exportMonthlyPDF(entries, monthLabel, month, year) {
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Μηνιαία Αναφορά ${monthLabel}</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: Arial, sans-serif; font-size: 11px; color: #1a1a1a; }
+
+  /* HEADER */
+  .header {
+    background: #1a2535;
+    color: #fff;
+    padding: 14px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0;
+  }
+  .header-left .company { font-size:13px; font-weight:700; letter-spacing:1px; color:#60aaee; }
+  .header-left .dept    { font-size:10px; color:#8aaccc; margin-top:2px; letter-spacing:0.5px; }
+  .header-right         { text-align:right; }
+  .header-right .doc-no { font-size:10px; color:#8aaccc; }
+
+  /* TITLE BAND */
+  .title-band {
+    background: #1a5fa8;
+    color: #fff;
+    padding: 10px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+  .title-band .title { font-size:14px; font-weight:700; letter-spacing:0.5px; }
+  .title-band .period { font-size:12px; opacity:0.85; }
+
+  /* SUMMARY ROW */
+  .summary {
+    display: flex;
+    gap: 12px;
+    padding: 0 20px 14px;
+  }
+  .sum-box {
+    flex:1; background:#f0f4f8; border-left:3px solid #1a5fa8;
+    padding:8px 12px; border-radius:3px;
+  }
+  .sum-val { font-size:20px; font-weight:700; color:#1a2535; }
+  .sum-lbl { font-size:9px; color:#6a7a90; font-weight:600; letter-spacing:0.5px; text-transform:uppercase; }
+
+  /* TABLE */
+  .section { padding: 0 20px 20px; }
+  table { width:100%; border-collapse:collapse; }
+  thead tr th {
+    background: #1a2535; color: #60aaee;
+    font-size: 9px; font-weight:700;
+    letter-spacing:0.8px; text-transform:uppercase;
+    padding: 8px 8px; text-align:left;
+  }
+  /* column widths */
+  .col-tag  { width:13%; }
+  .col-desc { width:22%; }
+  .col-date { width:10%; }
+  .col-task { width:22%; }
+  .col-tech { width:16%; }
+  .col-sign { width:17%; }
+
+  tbody tr td {
+    padding: 8px 8px;
+    border-bottom: 1px solid #e0e4e8;
+    vertical-align: middle;
+    font-size: 10px;
+  }
+  tbody tr:nth-child(even) td { background: #f8f9fb; }
+
+  .tag  { font-family:monospace; font-weight:700; color:#1a2535; font-size:10px; }
+  .sign-cell {
+    border-bottom: 1px solid #1a2535 !important;
+    height: 28px;
+    background: #fff !important;
+  }
+
+  /* FOOTER */
+  .footer {
+    position: fixed; bottom:0; left:0; right:0;
+    border-top: 1px solid #ddd;
+    padding: 6px 20px;
+    display: flex; justify-content:space-between;
+    font-size:9px; color:#aaa; background:#fff;
+  }
+
+  /* SIGNATURE SECTION */
+  .sig-section {
+    margin: 30px 20px 60px;
+    display: flex;
+    gap: 40px;
+  }
+  .sig-box { flex:1; }
+  .sig-label { font-size:10px; font-weight:700; color:#1a2535; margin-bottom:4px; letter-spacing:0.5px; text-transform:uppercase; }
+  .sig-line  { border-bottom:1px solid #1a2535; height:40px; margin-bottom:4px; }
+  .sig-name  { font-size:9px; color:#6a7a90; text-align:center; }
+
+  @media print {
+    body { font-size:10px; }
+    .no-print { display:none!important; }
+    .header, thead tr th { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .title-band { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <div class="company">🔥 MOTOR OIL REFINERIES</div>
+    <div class="dept">INSTRUMENTATION DEPARTMENT · FIRE & GAS DETECTION</div>
+  </div>
+  <div class="header-right">
+    <div class="doc-no">ΜΗΝΙΑΙΑ ΑΝΑΦΟΡΑ ΕΡΓΑΣΙΩΝ</div>
+    <div class="doc-no">Εκτυπώθηκε: ${new Date().toLocaleDateString('el-GR')}</div>
+  </div>
+</div>
+
+<div class="title-band">
+  <div class="title">ΕΡΓΑΣΙΕΣ ΑΝΙΧΝΕΥΤΩΝ — ${monthLabel.toUpperCase()}</div>
+  <div class="period">Σύνολο εγγραφών: ${entries.length}</div>
+</div>
+
+<div class="summary">
+  <div class="sum-box">
+    <div class="sum-val">${entries.length}</div>
+    <div class="sum-lbl">Εργασίες</div>
+  </div>
+  <div class="sum-box">
+    <div class="sum-val">${new Set(entries.map(e=>e.tag)).size}</div>
+    <div class="sum-lbl">Ανιχνευτές</div>
+  </div>
+  <div class="sum-box">
+    <div class="sum-val">${entries.filter(e=>e.task.includes('Βαθμονόμηση')).length}</div>
+    <div class="sum-lbl">Βαθμονομήσεις</div>
+  </div>
+  <div class="sum-box">
+    <div class="sum-val">${entries.filter(e=>e.task.includes('Αλλαγή')).length}</div>
+    <div class="sum-lbl">Αλλαγές</div>
+  </div>
+</div>
+
+<div class="section">
+  <table>
+    <thead>
+      <tr>
+        <th class="col-tag">TAG</th>
+        <th class="col-desc">ΠΕΡΙΓΡΑΦΗ / ΤΟΠΟΘΕΣΙΑ</th>
+        <th class="col-date">ΗΜΕΡΟΜΗΝΙΑ</th>
+        <th class="col-task">ΤΥΠΟΣ ΕΡΓΑΣΙΑΣ</th>
+        <th class="col-tech">ΤΕΧΝΙΤΗΣ</th>
+        <th class="col-sign">ΥΠΟΓΡΑΦΗ</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${entries.length ? entries.map((e,i) => `
+        <tr>
+          <td class="tag">${e.tag}</td>
+          <td>${e.description || '—'}</td>
+          <td style="font-family:monospace">${e.date}</td>
+          <td>${e.task}</td>
+          <td>${e.tech}</td>
+          <td class="sign-cell"></td>
+        </tr>
+      `).join('') : `
+        <tr><td colspan="6" style="text-align:center;padding:20px;color:#aaa">
+          Δεν υπάρχουν εγγραφές για ${monthLabel}
+        </td></tr>
+      `}
+    </tbody>
+  </table>
+</div>
+
+${entries.length ? `
+<div class="sig-section">
+  <div class="sig-box" style="max-width:300px">
+    <div class="sig-label">Υπεύθυνος Τμήματος</div>
+    <div class="sig-line"></div>
+    <div class="sig-name">Ε. ΜΑΡΤΙΝΟΣ — Instruments Foreman</div>
+  </div>
+</div>` : ''}
+
+<div class="footer">
+  <span>Motor Oil Refineries · Instrumentation Dept · VMRTIN26</span>
+  <span>Μηνιαία Αναφορά ${monthLabel}</span>
+</div>
+
+<div class="no-print" style="text-align:center;padding:20px;background:#f0f4f8;border-top:1px solid #ddd">
+  <button onclick="window.print()"
+    style="background:#1a5fa8;color:#fff;border:none;padding:10px 28px;font-size:14px;font-weight:700;border-radius:6px;cursor:pointer;margin-right:8px">
+    🖨 ΕΚΤΥΠΩΣΗ / ΑΠΟΘΗΚΕΥΣΗ PDF
+  </button>
+  <button onclick="window.close()"
+    style="background:#6a7a90;color:#fff;border:none;padding:10px 20px;font-size:14px;border-radius:6px;cursor:pointer">
+    ✕ Κλείσιμο
+  </button>
+</div>
+</body></html>`;
+
+  const win = window.open('', '_blank');
+  if (win) { win.document.write(html); win.document.close(); setTimeout(()=>win.print(),800); }
+  else showToast('Επίτρεψε τα pop-ups','error');
+}
+
+function exportMonthlyExcel(entries, monthLabel, month, year) {
+  // Build CSV (opens in Excel)
+  const BOM = '\uFEFF'; // UTF-8 BOM for Greek characters in Excel
+  const headers = ['TAG','ΠΕΡΙΓΡΑΦΗ / ΤΟΠΟΘΕΣΙΑ','ΗΜΕΡΟΜΗΝΙΑ','ΤΥΠΟΣ ΕΡΓΑΣΙΑΣ','ΦΙΑΛΗ','ΤΕΧΝΙΤΗΣ','ΣΗΜΕΙΩΣΕΙΣ'];
+  const rows = entries.map(e => [
+    e.tag,
+    `"${(e.description||'').replace(/"/g,'""')}"`,
+    e.date,
+    `"${(e.task||'').replace(/"/g,'""')}"`,
+    e.cylinder || '',
+    `"${(e.tech||'').replace(/"/g,'""')}"`,
+    `"${(e.notes||'').replace(/"/g,'""')}"`,
+  ]);
+
+  const csv = BOM + [
+    `MOTOR OIL REFINERIES - INSTRUMENTATION DEPT`,
+    `ΜΗΝΙΑΙΑ ΑΝΑΦΟΡΑ ΕΡΓΑΣΙΩΝ ΑΝΙΧΝΕΥΤΩΝ - ${monthLabel.toUpperCase()}`,
+    `Εξαγωγή: ${new Date().toLocaleDateString('el-GR')}`,
+    `Σύνολο εγγραφών: ${entries.length}`,
+    '',
+    headers.join(';'),
+    ...rows.map(r => r.join(';')),
+    '',
+    `Σύνολο εργασιών;${entries.length}`,
+    `Βαθμονομήσεις;${entries.filter(e=>e.task.includes('Βαθμονόμηση')).length}`,
+    `Αλλαγές;${entries.filter(e=>e.task.includes('Αλλαγή')).length}`,
+  ].join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `DETECTORS_${year}_${String(month).padStart(2,'0')}_${monthLabel.replace(' ','_')}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast(`✓ Excel αποθηκεύτηκε`);
+}
+
+function exportPDF(mode) {
+  // mode: 'all' | 'area' | 'detector' | 'upcoming'
+  let title = 'VMRTIN26 — MOTOR OIL REFINERIES';
+  let subtitle = '';
+  let rows = [];
+
+  if (mode === 'detector' && selectedDetector) {
+    title = `ΙΣΤΟΡΙΚΟ ΑΝΙΧΝΕΥΤΗ: ${selectedDetector.tag}`;
+    subtitle = `${selectedDetector.location || selectedDetector.area} · ${selectedDetector.category}`;
+    rows = selectedDetector.entries.map(e => ({
+      col1: e.date, col2: e.task, col3: e.cylinder || '—', col4: e.tech, col5: e.notes || ''
+    }));
+  } else if (mode === 'upcoming') {
+    title = 'ΕΠΟΜΕΝΕΣ ΒΑΘΜΟΝΟΜΗΣΕΙΣ — 30 ΜΕΡΕΣ';
+    subtitle = `Εξαγωγή: ${new Date().toLocaleDateString('el-GR')}`;
+    const upcoming = DETECTORS
+      .filter(d => { const days = getDaysUntil(getNextCalDate(d)); return days !== null && days <= 30; })
+      .sort((a,b) => (getNextCalDate(a)||'').localeCompare(getNextCalDate(b)||''));
+    rows = upcoming.map(d => ({
+      col1: d.tag,
+      col2: formatDate(getNextCalDate(d)),
+      col3: d.location || d.area,
+      col4: d.category,
+      col5: getAlertStatus(d) === 'overdue' ? '⚠ ΛΗΓΜΕΝΟ' : `${getDaysUntil(getNextCalDate(d))} μέρες`
+    }));
+  } else {
+    // all detectors summary
+    subtitle = `Σύνολο: ${DETECTORS.length} · Εξαγωγή: ${new Date().toLocaleDateString('el-GR')}`;
+    rows = DETECTORS.map(d => ({
+      col1: d.tag,
+      col2: d.location || d.area,
+      col3: d.category,
+      col4: formatDate(getNextCalDate(d)),
+      col5: d.entries.length + ' εγγρ.'
+    }));
+  }
+
+  const headers = mode === 'detector'
+    ? ['ΗΜΕΡΟΜΗΝΙΑ','ΕΡΓΑΣΙΑ','ΦΙΑΛΗ','ΤΕΧΝΙΤΗΣ','ΣΗΜΕΙΩΣΕΙΣ']
+    : ['TAG','ΤΟΠΟΘΕΣΙΑ / ΠΕΡΙΟΧΗ','ΚΑΤΗΓΟΡΙΑ','ΕΠΟΜΕΝΗ ΒΑΘΜ.','ΚΑΤΑΣΤΑΣΗ'];
+
+  const alertCounts = {
+    overdue: DETECTORS.filter(d=>getAlertStatus(d)==='overdue').length,
+    soon:    DETECTORS.filter(d=>getAlertStatus(d)==='soon').length,
+    ok:      DETECTORS.filter(d=>getAlertStatus(d)==='ok').length,
+  };
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>${title}</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: Arial, sans-serif; font-size: 11px; color: #1a1a1a; background: #fff; }
+  .header { background: #1c1f1a; color: #fff; padding: 16px 20px; margin-bottom: 16px; }
+  .header-top { display:flex; align-items:center; justify-content:space-between; }
+  .header-title { font-size: 15px; font-weight: 700; letter-spacing: 1px; color: #ff7a2a; }
+  .header-sub { font-size: 11px; color: #aaa; margin-top: 3px; }
+  .header-date { font-size: 10px; color: #888; }
+  .kpi-row { display:flex; gap:12px; padding: 0 20px 14px; }
+  .kpi { flex:1; background:#f5f5f3; border-left:3px solid #ff7a2a; padding:8px 10px; border-radius:3px; }
+  .kpi-val { font-size:20px; font-weight:700; color:#1c1f1a; }
+  .kpi-lbl { font-size:9px; color:#888; font-weight:600; letter-spacing:0.5px; text-transform:uppercase; }
+  .kpi.red   { border-color: #e04840; }
+  .kpi.green { border-color: #5cb87a; }
+  .kpi.blue  { border-color: #5ab4d4; }
+  .section { padding: 0 20px 20px; }
+  .section-title { font-size: 12px; font-weight:700; color:#ff7a2a; letter-spacing:1px; text-transform:uppercase; border-bottom:2px solid #ff7a2a; padding-bottom:4px; margin-bottom:10px; }
+  table { width:100%; border-collapse:collapse; }
+  th { background:#1c1f1a; color:#ff7a2a; font-size:9px; font-weight:700; letter-spacing:0.8px; text-transform:uppercase; padding:7px 8px; text-align:left; }
+  td { padding:6px 8px; border-bottom:1px solid #e8e8e8; vertical-align:top; font-size:10px; }
+  tr:nth-child(even) td { background:#f9f9f7; }
+  tr:hover td { background:#fff3e8; }
+  .tag { font-family:monospace; font-weight:700; color:#1c1f1a; }
+  .overdue { color:#e04840; font-weight:700; }
+  .soon { color:#ff7a2a; font-weight:600; }
+  .ok { color:#5cb87a; }
+  .footer { position:fixed; bottom:0; left:0; right:0; text-align:center; font-size:9px; color:#bbb; padding:6px; border-top:1px solid #eee; background:#fff; }
+  @media print {
+    .no-print { display:none!important; }
+    body { font-size: 10px; }
+    .header { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    th { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  }
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="header-top">
+    <div>
+      <div class="header-title">🔥 ${title}</div>
+      <div class="header-sub">${subtitle}</div>
+    </div>
+    <div class="header-date">${new Date().toLocaleDateString('el-GR', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
+  </div>
+</div>
+${mode !== 'detector' ? `
+<div class="kpi-row">
+  <div class="kpi"><div class="kpi-val">${DETECTORS.length}</div><div class="kpi-lbl">Σύνολο</div></div>
+  <div class="kpi red"><div class="kpi-val">${alertCounts.overdue}</div><div class="kpi-lbl">Ληγμένοι</div></div>
+  <div class="kpi" style="border-color:#ff7a2a"><div class="kpi-val">${alertCounts.soon}</div><div class="kpi-lbl">≤30 μέρες</div></div>
+  <div class="kpi green"><div class="kpi-val">${alertCounts.ok}</div><div class="kpi-lbl">Εντός</div></div>
+</div>` : ''}
+<div class="section">
+  <div class="section-title">${mode==='detector' ? 'Ιστορικό Εγγραφών' : mode==='upcoming' ? 'Επερχόμενες Βαθμονομήσεις' : 'Κατάλογος Ανιχνευτών'}</div>
+  <table>
+    <thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead>
+    <tbody>
+      ${rows.map((r,i) => `
+        <tr>
+          <td class="tag">${r.col1}</td>
+          <td>${r.col2}</td>
+          <td>${r.col3}</td>
+          <td>${r.col4}</td>
+          <td class="${r.col5.includes('ΛΗΓΜ')?'overdue':r.col5.includes('μέρ')&&parseInt(r.col5)<31?'soon':''}">${r.col5}</td>
+        </tr>
+      `).join('')}
+    </tbody>
+  </table>
+  <div style="margin-top:10px;font-size:9px;color:#aaa;text-align:right">${rows.length} εγγραφές</div>
+</div>
+<div class="footer">Motor Oil Refineries · Instruments Dept · ${new Date().getFullYear()} · Εκτυπώθηκε: ${new Date().toLocaleDateString('el-GR')}</div>
+<div class="no-print" style="text-align:center;padding:20px">
+  <button onclick="window.print()" style="background:#ff7a2a;color:#fff;border:none;padding:10px 24px;font-size:14px;font-weight:700;border-radius:6px;cursor:pointer;margin-right:8px">🖨 ΕΚΤΥΠΩΣΗ</button>
+  <button onclick="window.close()" style="background:#444;color:#fff;border:none;padding:10px 24px;font-size:14px;border-radius:6px;cursor:pointer">✕ Κλείσιμο</button>
+</div>
+</body></html>`;
+
+  const win = window.open('', '_blank');
+  if (win) {
+    win.document.write(html);
+    win.document.close();
+    setTimeout(() => win.print(), 800);
+  } else {
+    showToast('Επίτρεψε τα pop-ups για εκτύπωση', 'error');
+  }
+}
+
+// ══ QR MODAL ══
+let qrContext = 'detectors';
+
+function openQR(ctx) {
+  qrContext = ctx;
+  document.getElementById('qr-modal').classList.add('open');
+  document.getElementById('qr-tag-input').value = '';
+  document.getElementById('qr-sub').textContent = t('qr-sub');
+  setTimeout(() => document.getElementById('qr-tag-input').focus(), 100);
+}
+
+function closeQR() {
+  document.getElementById('qr-modal').classList.remove('open');
+}
+
+function qrConfirm() {
+  const tag = document.getElementById('qr-tag-input').value.trim();
+  closeQR();
+  if (!tag) return;
+  if (qrContext === 'detectors') {
+    const found = DETECTORS.find(d => d.tag === tag);
+    if (found) { openDetector(tag); }
+    else { showToast(lang==='el'?`TAG ${tag} δεν βρέθηκε`:`TAG ${tag} not found`, 'error'); }
+  } else if (qrContext === 'add') {
+    const inp = document.getElementById('add-tag');
+    if (inp) inp.value = tag;
+  }
+}
+
+document.getElementById('qr-tag-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') qrConfirm();
+});
+
+// ══ TOAST ══
+function showToast(msg, type='success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.background = type === 'error' ? 'var(--red)' : 'var(--green)';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+</script>
+</body>
+</html>
