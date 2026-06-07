@@ -1639,7 +1639,7 @@ function parseExcelFile(buffer, filename) {
             changed = true;
           }
         }
-        if (changed) updated++;
+        if (changed) { det._updated = true; updated++; }
       } else {
         det = {
           tag,
@@ -1653,6 +1653,7 @@ function parseExcelFile(buffer, filename) {
           nextCalDate:  meta.nextCalDate  || null,
           entries,
         };
+        det._imported = true;
         DETECTORS.push(det);
         entryCount += entries.length;
         imported++;
@@ -1666,13 +1667,17 @@ function parseExcelFile(buffer, filename) {
     saveDetectors();
 
     // Push to Google Sheets if connected
+    // Στέλνουμε ΟΛΟΥΣ (νέους + ενημερωμένους) — το Sheet κάνει upsert
     if (gsConnected) {
-      const newDets = DETECTORS.slice(-imported);
-      gsPost({ action: 'importDetectors', data: newDets.map(d => ({
-        tag: d.tag, description: d.description||'', location: d.location||'',
-        type: d.type||'GAS', area: d.area||'', category: d.category||'',
-        calInterval: d.calInterval||'', nextCalDate: d.nextCalDate||'',
-      }))}).catch(()=>{});
+      const allChanged = DETECTORS.filter(d => d._imported || d._updated);
+      if (allChanged.length > 0) {
+        gsPost({ action: 'importDetectors', data: allChanged.map(d => ({
+          tag: d.tag, description: d.description||'', location: d.location||'',
+          type: d.type||'GAS', area: d.area||'', category: d.category||'',
+          calInterval: d.calInterval||'', nextCalDate: d.nextCalDate||'',
+        }))}).catch(()=>{});
+        allChanged.forEach(d => { delete d._imported; delete d._updated; });
+      }
     }
 
     showToast(`✓ ${filename}: ${imported} νέοι · ${updated} ενημερώθηκαν · ${entryCount} εγγραφές`);
@@ -2124,21 +2129,25 @@ function renderDashboard(mc) {
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:16px">
-      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:10px;border-top:3px solid var(--accent)">
+      <div onclick="showKpiList('all')" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:10px;border-top:3px solid var(--accent);cursor:pointer">
         <div style="font-family:var(--mono);font-size:22px;color:var(--accent2)">${total}</div>
         <div style="font-size:10px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.5px">ΣΥΝΟΛΟ</div>
+        <div style="font-size:9px;color:var(--accent);font-family:var(--cond);margin-top:3px">▶ ΔΕΣ ΟΛΟΥΣ</div>
       </div>
-      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:10px;border-top:3px solid var(--red)">
+      <div onclick="showKpiList('overdue')" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:10px;border-top:3px solid var(--red);cursor:pointer">
         <div style="font-family:var(--mono);font-size:22px;color:var(--red2)">${overdue}</div>
         <div style="font-size:10px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.5px">ΛΗΓΜΕΝΟΙ</div>
+        <div style="font-size:9px;color:var(--red2);font-family:var(--cond);margin-top:3px">▶ ΔΕΣ ΛΗΓΜΕΝΟΥΣ</div>
       </div>
-      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:10px;border-top:3px solid var(--accent)">
+      <div onclick="showKpiList('soon')" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:10px;border-top:3px solid var(--accent);cursor:pointer">
         <div style="font-family:var(--mono);font-size:22px;color:var(--accent2)">${soon}</div>
         <div style="font-size:10px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.5px">≤30 ΜΕΡΕΣ</div>
+        <div style="font-size:9px;color:var(--accent2);font-family:var(--cond);margin-top:3px">▶ ΔΕΣ ΛΙΣΤΑ</div>
       </div>
-      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:10px;border-top:3px solid var(--green)">
+      <div onclick="showKpiList('ok')" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:10px;border-top:3px solid var(--green);cursor:pointer">
         <div style="font-family:var(--mono);font-size:22px;color:var(--green2)">${okCount}</div>
         <div style="font-size:10px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.5px">ΕΝΤΟΣ</div>
+        <div style="font-size:9px;color:var(--green2);font-family:var(--cond);margin-top:3px">▶ ΔΕΣ ΛΙΣΤΑ</div>
       </div>
     </div>
 
@@ -2558,6 +2567,29 @@ function renderAdmin(mc) {
     <div class="page-header">
       <div class="page-title">${t('admin-title')}</div>
       <div class="page-sub">${t('admin-sub')}</div>
+    </div>
+
+
+    <!-- BACKUP / RESTORE -->
+    <div class="card" style="border-color:var(--green);border-top:2px solid var(--green);margin-bottom:12px">
+      <div class="card-title" style="color:var(--green)">💾 BACKUP / RESTORE ΔΕΔΟΜΕΝΩΝ</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px">
+        Αποθήκευση όλων των δεδομένων σε αρχείο JSON και επαναφορά από προηγούμενο backup.
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <button onclick="exportBackupJSON()"
+          style="background:var(--green);border:none;border-radius:var(--radius);color:#fff;padding:10px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer;letter-spacing:0.5px">
+          ⬇ ΑΠΟΘΗΚΕΥΣΗ BACKUP
+        </button>
+        <button onclick="document.getElementById('restore-file-input').click()"
+          style="background:var(--bg3);border:1px solid var(--green);border-radius:var(--radius);color:var(--green);padding:10px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer;letter-spacing:0.5px">
+          ⬆ ΦΟΡΤΩΣΗ BACKUP
+        </button>
+      </div>
+      <input type="file" id="restore-file-input" accept=".json" style="display:none" onchange="importBackupJSON(this)">
+      <div style="margin-top:8px;font-size:10px;color:var(--text3);text-align:center">
+        Τελευταίο backup: <span id="last-backup-label" style="color:var(--green);font-family:var(--mono)">${getLastBackupLabel()}</span>
+      </div>
     </div>
 
     <!-- IMPORT -->
@@ -3209,9 +3241,11 @@ ${entries.length ? `
 </div>
 </body></html>`;
 
-  const win = window.open('', '_blank');
-  if (win) { win.document.write(html); win.document.close(); setTimeout(()=>win.print(),800); }
-  else showToast('Επίτρεψε τα pop-ups','error');
+  const blob2 = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url2  = URL.createObjectURL(blob2);
+  const win   = window.open(url2, '_blank');
+  if (!win) showToast('Επίτρεψε τα pop-ups','error');
+  else setTimeout(() => URL.revokeObjectURL(url2), 3000);
 }
 
 function exportMonthlyExcel(entries, monthLabel, month, year) {
@@ -3262,7 +3296,11 @@ function exportPDF(mode) {
     title = `ΙΣΤΟΡΙΚΟ ΑΝΙΧΝΕΥΤΗ: ${selectedDetector.tag}`;
     subtitle = `${selectedDetector.location || selectedDetector.area} · ${selectedDetector.category}`;
     rows = selectedDetector.entries.map(e => ({
-      col1: e.date, col2: e.task, col3: e.cylinder || '—', col4: e.tech, col5: e.notes || ''
+      col1: e.date,
+      col2: selectedDetector.tag,
+      col3: selectedDetector.description || selectedDetector.location || '—',
+      col4: e.tech || '—',
+      col5: ''
     }));
   } else if (mode === 'upcoming') {
     title = 'ΕΠΟΜΕΝΕΣ ΒΑΘΜΟΝΟΜΗΣΕΙΣ — 30 ΜΕΡΕΣ';
@@ -3290,7 +3328,7 @@ function exportPDF(mode) {
   }
 
   const headers = mode === 'detector'
-    ? ['ΗΜΕΡΟΜΗΝΙΑ','ΕΡΓΑΣΙΑ','ΦΙΑΛΗ','ΤΕΧΝΙΤΗΣ','ΣΗΜΕΙΩΣΕΙΣ']
+    ? ['ΗΜΕΡΟΜΗΝΙΑ','TAG','ΠΕΡΙΓΡΑΦΗ','ΤΕΧΝΙΤΗΣ','']
     : ['TAG','ΤΟΠΟΘΕΣΙΑ / ΠΕΡΙΟΧΗ','ΚΑΤΗΓΟΡΙΑ','ΕΠΟΜΕΝΗ ΒΑΘΜ.','ΚΑΤΑΣΤΑΣΗ'];
 
   const alertCounts = {
@@ -3381,14 +3419,163 @@ ${mode !== 'detector' ? `
 </div>
 </body></html>`;
 
-  const win = window.open('', '_blank');
+  // Blob URL — πραγματικό νέο tab, κλείσιμο δεν επηρεάζει την εφαρμογή
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const win  = window.open(url, '_blank');
   if (win) {
-    win.document.write(html);
-    win.document.close();
-    setTimeout(() => win.print(), 800);
+    win.addEventListener('load', () => {
+      setTimeout(() => { URL.revokeObjectURL(url); }, 2000);
+    });
   } else {
     showToast('Επίτρεψε τα pop-ups για εκτύπωση', 'error');
   }
+}
+
+
+// ══ KPI LIST MODAL ══
+function showKpiList(filter) {
+  const labels = {
+    all:     { title: 'ΟΛΟΙ ΟΙ ΑΝΙΧΝΕΥΤΕΣ', color: 'var(--accent)',  icon: '📊' },
+    overdue: { title: 'ΛΗΓΜΕΝΟΙ ΑΝΙΧΝΕΥΤΕΣ', color: 'var(--red2)',   icon: '⚠️' },
+    soon:    { title: 'ΒΑΘΜΟΝΟΜΗΣΗ ≤30 ΜΕΡΕΣ', color: 'var(--accent2)', icon: '⏰' },
+    ok:      { title: 'ΕΝΤΟΣ ΠΡΟΓΡΑΜΜΑΤΟΣ',   color: 'var(--green2)', icon: '✅' },
+  };
+  const lbl = labels[filter];
+
+  const filtered = filter === 'all'
+    ? DETECTORS.slice()
+    : DETECTORS.filter(d => getAlertStatus(d) === filter);
+
+  filtered.sort((a,b) => {
+    if (filter === 'overdue') {
+      return (getNextCalDate(a)||'').localeCompare(getNextCalDate(b)||'');
+    }
+    return (getNextCalDate(a)||'9999').localeCompare(getNextCalDate(b)||'9999');
+  });
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay open';
+  overlay.id = 'kpi-list-overlay';
+  overlay.style.cssText = 'align-items:flex-start;padding:0;overflow-y:auto;';
+
+  overlay.innerHTML = `
+    <div style="background:var(--bg2);width:100%;min-height:100vh;max-width:680px;margin:0 auto;padding:16px 16px 80px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding-top:8px">
+        <button onclick="document.getElementById('kpi-list-overlay').remove()"
+          style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text2);padding:6px 12px;cursor:pointer;font-family:var(--font);font-size:14px">
+          ← Πίσω
+        </button>
+        <div>
+          <div style="font-family:var(--cond);font-size:18px;font-weight:700;color:${lbl.color}">${lbl.icon} ${lbl.title}</div>
+          <div style="font-size:12px;color:var(--text3)">${filtered.length} ανιχνευτές</div>
+        </div>
+      </div>
+      ${filtered.length === 0 ? `
+        <div class="empty-state"><div class="empty-icon">✅</div><div class="empty-text">Κανένας ανιχνευτής σε αυτή την κατηγορία</div></div>
+      ` : filtered.map(d => {
+        const status  = getAlertStatus(d);
+        const next    = getNextCalDate(d);
+        const days    = getDaysUntil(next);
+        const alertColor = status==='overdue' ? 'var(--red2)' : status==='soon' ? 'var(--accent2)' : status==='ok' ? 'var(--green2)' : 'var(--text3)';
+        const daysText = days === null ? '—' : days < 0 ? Math.abs(days)+'μ πριν' : days === 0 ? 'ΣΗΜΕΡΑ' : days+'μ';
+        return `
+        <div class="detector-item" onclick="document.getElementById('kpi-list-overlay').remove();openDetector('${d.tag}')" style="margin-bottom:6px">
+          <div style="flex:1;min-width:0">
+            <div class="det-tag">${d.tag}</div>
+            <div class="det-area">${d.location || d.area} · ${d.category||''}</div>
+          </div>
+          <div style="text-align:right;margin-right:8px">
+            <div style="font-family:var(--mono);font-size:11px;color:${alertColor}">${formatDate(next)}</div>
+            <div style="font-size:10px;color:${alertColor};font-weight:600">${daysText}</div>
+          </div>
+          <span class="det-arrow">›</span>
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.scrollTop = 0;
+}
+
+
+// ══ BACKUP / RESTORE ══
+function getLastBackupLabel() {
+  const ts = localStorage.getItem('vmrtin26_last_backup');
+  if (!ts) return 'Κανένα';
+  return new Date(ts).toLocaleDateString('el-GR', {
+    day:'2-digit', month:'2-digit', year:'numeric',
+    hour:'2-digit', minute:'2-digit'
+  });
+}
+
+function exportBackupJSON() {
+  const backup = {
+    version:   '1.0',
+    timestamp: new Date().toISOString(),
+    app:       'VMRTIN26',
+    detectors: DETECTORS,
+    entries:   DETECTORS.flatMap(d => (d.entries||[]).map(e => ({...e, tag: d.tag}))),
+  };
+  const json = JSON.stringify(backup, null, 2);
+  const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  const date = new Date().toISOString().slice(0,10);
+  a.href     = url;
+  a.download = `VMRTIN26_backup_${date}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  localStorage.setItem('vmrtin26_last_backup', new Date().toISOString());
+  const lbl = document.getElementById('last-backup-label');
+  if (lbl) lbl.textContent = getLastBackupLabel();
+  showToast('✓ Backup αποθηκεύτηκε: VMRTIN26_backup_' + date + '.json');
+}
+
+function importBackupJSON(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const backup = JSON.parse(e.target.result);
+      if (!backup.app || backup.app !== 'VMRTIN26') {
+        showToast('Μη έγκυρο αρχείο backup VMRTIN26', 'error');
+        return;
+      }
+      // Confirm
+      const ts = new Date(backup.timestamp).toLocaleDateString('el-GR', {
+        day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'
+      });
+      if (!confirm(`Φόρτωση backup από ${ts}?\n\nΑυτό θα αντικαταστήσει τα τρέχοντα δεδομένα.\n\nΣυνέχεια;`)) {
+        input.value = '';
+        return;
+      }
+      // Restore detectors
+      DETECTORS.length = 0;
+      (backup.detectors || []).forEach(d => DETECTORS.push(d));
+      // Restore entries into detectors
+      if (backup.entries && backup.entries.length > 0) {
+        const entryMap = {};
+        backup.entries.forEach(e => {
+          if (!entryMap[e.tag]) entryMap[e.tag] = [];
+          entryMap[e.tag].push(e);
+        });
+        DETECTORS.forEach(d => {
+          if (entryMap[d.tag]) d.entries = entryMap[d.tag];
+        });
+      }
+      saveDetectors();
+      showToast('✓ Backup φορτώθηκε επιτυχώς — ' + DETECTORS.length + ' ανιχνευτές');
+      showPage(currentPage || 'home');
+    } catch(err) {
+      showToast('Σφάλμα ανάγνωσης backup: ' + err.message, 'error');
+    }
+    input.value = '';
+  };
+  reader.readAsText(file, 'utf-8');
 }
 
 // ══ QR MODAL ══
