@@ -1380,23 +1380,25 @@ async function syncFromSheets() {
       DETECTORS.forEach(d => d.entries.sort((a,b) => a.date.localeCompare(b.date)));
     }
 
-    // Load users
+    // Load users — Sheet είναι η αλήθεια
+    // Αφαιρούμε όλους πλην admin και τους ξαναφτιάχνουμε από το Sheet
     const usrRes = await gsGet({ action: 'getUsers' });
     if (usrRes.users && usrRes.users.length > 0) {
+      // Κράτα μόνο τον admin τοπικά
+      const adminUser = USERS['admin'];
+      Object.keys(USERS).forEach(k => { if (k !== 'admin') delete USERS[k]; });
+      // Φόρτωσε ΟΛΑ από Sheet (συμπεριλαμβανομένου admin αν υπάρχει)
       for (const u of usrRes.users) {
-        if (USERS[u.username]) {
-          USERS[u.username].passHash = u.passHash || USERS[u.username].passHash;
-          USERS[u.username].role     = u.role     || USERS[u.username].role;
-          USERS[u.username].name     = u.name     || USERS[u.username].name;
-        } else {
-          USERS[u.username] = {
-            passHash: u.passHash || '',
-            role:     u.role || 'readonly',
-            name:     u.name || u.username,
-            dept:     u.dept || '',
-          };
-        }
+        if (!u.username) continue;
+        USERS[u.username] = {
+          passHash: u.passHash || (u.username === 'admin' && adminUser ? adminUser.passHash : ''),
+          role:     u.role     || 'readonly',
+          name:     u.name     || u.username,
+          dept:     u.dept     || '',
+        };
       }
+      // Αν ο admin δεν είναι στο Sheet, κράτα τον τοπικό
+      if (!USERS['admin'] && adminUser) USERS['admin'] = adminUser;
     }
 
     gsConnected = true;
@@ -1948,21 +1950,53 @@ initPasswords();
 async function doLogin() {
   const u = document.getElementById('login-user').value.trim();
   const p = document.getElementById('login-pass').value;
-  const user = USERS[u];
-  if (!user) { showLoginError(); return; }
-
   const inputHash = await hashPassword(p);
-  if (inputHash === user.passHash) {
-    currentUser = { username: u, ...user };
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('app').style.display = 'flex';
-    document.getElementById('app').style.flexDirection = 'column';
-    setupUser();
-    showPage('dashboard');
-    syncFromSheets();
-  } else {
-    showLoginError();
+
+  // Πρώτα έλεγξε τοπικά (hardcoded + localStorage)
+  let user = USERS[u];
+  if (user && inputHash === user.passHash) {
+    loginSuccess(u, user);
+    return;
   }
+
+  // Αν δεν βρέθηκε τοπικά ή λάθος κωδικός — ρώτα το Sheet
+  if (gsConnected || GS_URL) {
+    const btn = document.getElementById('l-btn');
+    if (btn) { btn.textContent = '...'; btn.disabled = true; }
+    try {
+      const res = await gsGet({ action: 'getUsers' });
+      if (res && res.users) {
+        res.users.forEach(su => {
+          USERS[su.username] = {
+            passHash: su.passHash,
+            role:     su.role     || 'readonly',
+            name:     su.name     || su.username,
+            dept:     su.dept     || '',
+          };
+        });
+      }
+      user = USERS[u];
+      if (user && inputHash === user.passHash) {
+        loginSuccess(u, user);
+        return;
+      }
+    } catch(e) {}
+    finally {
+      if (btn) { btn.textContent = 'ΕΙΣΟΔΟΣ'; btn.disabled = false; }
+    }
+  }
+
+  showLoginError();
+}
+
+function loginSuccess(u, user) {
+  currentUser = { username: u, ...user };
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  document.getElementById('app').style.flexDirection = 'column';
+  setupUser();
+  showPage('dashboard');
+  syncFromSheets();
 }
 
 function showLoginError() {
