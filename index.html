@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>VMRTIN26 — Motor Oil Refineries</title>
 <meta name="version" content="1.0.0">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1a2535">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="VMRTIN26">
+<link rel="apple-touch-icon" href="icon-192.png">
+
 <meta name="deploy" content="github-pages">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27><text y=%27.9em%27 font-size=%2790%27>🔥</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -2054,6 +2061,11 @@ async function doChangePassword(targetUser, requireOld) {
 
   const newHash = await hashPassword(newPass);
   USERS[targetUser].passHash = newHash;
+  if (gsConnected) {
+    gsPost({ action: 'updatePassword', data: {
+      username: targetUser, passHash: newHash
+    }}).catch(()=>{});
+  }
   savePasswordHash(targetUser, newHash);
   document.getElementById('chpass-overlay').remove();
   showToast(`✓ Ο κωδικός του ${targetUser} άλλαξε`);
@@ -2694,6 +2706,7 @@ function renderAdmin(mc) {
             ${Object.entries(ROLES).map(([r,rd]) => `<option value="${r}" ${u.role===r?'selected':''}>${rd.label}</option>`).join('')}
           </select>
           <button onclick="showChangePassword('${uname}')" style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text3);padding:4px 8px;font-size:12px;cursor:pointer;margin-left:4px;flex-shrink:0" title="Αλλαγή κωδικού">🔑</button>
+          ${uname !== 'admin' ? `<button onclick="deleteUser('${uname}')" style="background:var(--bg3);border:1px solid var(--red);border-radius:var(--radius);color:var(--red2);padding:4px 8px;font-size:12px;cursor:pointer;margin-left:4px;flex-shrink:0" title="Διαγραφή χρήστη">🗑</button>` : ''}
         </div>
       `).join('')}
     </div>
@@ -2854,7 +2867,18 @@ function confirmAddListItem(listType) {
 
 function changeRole(uname, newRole) {
   USERS[uname].role = newRole;
-  showToast(lang==='el'?`Ο ρόλος του ${uname} ενημερώθηκε`:`Role updated for ${uname}`);
+  if (gsConnected) {
+    gsPost({ action: 'saveUser', data: {
+      username: uname,
+      name:     USERS[uname].name     || uname,
+      role:     newRole,
+      dept:     USERS[uname].dept     || '',
+      passHash: USERS[uname].passHash || '',
+    }}).then(() => showToast(`✓ Ρόλος ${uname} → ${newRole} αποθηκεύτηκε`))
+      .catch(() => showToast('Αποθηκεύτηκε τοπικά μόνο','error'));
+  } else {
+    showToast(`Ρόλος ${uname} ενημερώθηκε (offline)`);
+  }
 }
 
 async function addUser() {
@@ -2867,7 +2891,33 @@ async function addUser() {
   const hash = await hashPassword(pass);
   USERS[uname] = { passHash: hash, role, name, dept: '' };
   savePasswordHash(uname, hash);
-  showToast(`✓ Ο χρήστης ${uname} προστέθηκε`);
+  if (gsConnected) {
+    gsPost({ action: 'saveUser', data: {
+      username: uname, name, role, dept: '', passHash: hash
+    }}).then(() => showToast(`✓ Χρήστης ${uname} αποθηκεύτηκε στο Sheet`))
+      .catch(() => showToast(`✓ Χρήστης ${uname} προστέθηκε (offline)`));
+  } else {
+    showToast(`✓ Χρήστης ${uname} προστέθηκε (offline)`);
+  }
+  document.getElementById('new-uname').value = '';
+  document.getElementById('new-name').value  = '';
+  document.getElementById('new-pass').value  = '';
+  renderAdmin(document.getElementById('main-content'));
+}
+
+
+// ══ DELETE USER ══
+async function deleteUser(uname) {
+  if (uname === 'admin') { showToast('Δεν μπορείς να διαγράψεις τον admin','error'); return; }
+  if (uname === currentUser.username) { showToast('Δεν μπορείς να διαγράψεις τον εαυτό σου','error'); return; }
+  if (!confirm(`Διαγραφή χρήστη "${uname}";\nΗ ενέργεια είναι μη αναστρέψιμη.`)) return;
+  delete USERS[uname];
+  localStorage.removeItem('vmrtin26_pw_' + uname);
+  // Διαγραφή από Sheet — saveUser με role=DELETED flag
+  if (gsConnected) {
+    gsPost({ action: 'deleteUser', data: { username: uname } }).catch(()=>{});
+  }
+  showToast(`✓ Χρήστης ${uname} διαγράφηκε`);
   renderAdmin(document.getElementById('main-content'));
 }
 
@@ -3592,6 +3642,41 @@ function importBackupJSON(input) {
     input.value = '';
   };
   reader.readAsText(file, 'utf-8');
+}
+
+
+// ══ SERVICE WORKER (PWA) ══
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg => console.log('SW registered:', reg.scope))
+      .catch(err => console.log('SW error:', err));
+  });
+}
+
+// PWA Install prompt
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  // Δείξε κουμπί εγκατάστασης αν υπάρχει
+  const btn = document.getElementById('install-btn');
+  if (btn) btn.style.display = 'block';
+});
+
+window.addEventListener('appinstalled', () => {
+  deferredPrompt = null;
+  showToast('✓ Η εφαρμογή εγκαταστάθηκε επιτυχώς!');
+});
+
+async function installPWA() {
+  if (!deferredPrompt) {
+    showToast('Χρησιμοποίησε το μενού του browser → "Προσθήκη στην αρχική οθόνη"');
+    return;
+  }
+  deferredPrompt.prompt();
+  const { outcome } = await deferredPrompt.userChoice;
+  deferredPrompt = null;
 }
 
 // ══ QR MODAL ══
