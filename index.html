@@ -2620,21 +2620,26 @@ function renderAdmin(mc) {
     <div class="card" style="border-color:var(--green);border-top:2px solid var(--green);margin-bottom:12px">
       <div class="card-title" style="color:var(--green)">💾 BACKUP / RESTORE ΔΕΔΟΜΕΝΩΝ</div>
       <div style="font-size:12px;color:var(--text3);margin-bottom:12px">
-        Αποθήκευση όλων των δεδομένων σε αρχείο JSON και επαναφορά από προηγούμενο backup.
+        Τοπικό backup (JSON) ή αποστολή στο <strong style="color:var(--green)">VMRTIN26_BACKUP</strong> Sheet.
+        Αυτόματο backup <span style="color:var(--accent)">κάθε Κυριακή 02:00</span> · 8 εβδομάδες ιστορικό.
       </div>
+      <button onclick="triggerManualBackup()"
+        style="width:100%;background:var(--accent);border:none;border-radius:var(--radius);color:#fff;padding:10px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer;letter-spacing:0.5px;margin-bottom:8px">
+        ☁ BACKUP ΣΤΟ GOOGLE SHEET ΤΩΡΑ
+      </button>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <button onclick="exportBackupJSON()"
           style="background:var(--green);border:none;border-radius:var(--radius);color:#fff;padding:10px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer;letter-spacing:0.5px">
-          ⬇ ΑΠΟΘΗΚΕΥΣΗ BACKUP
+          ⬇ ΤΟΠΙΚΟ (JSON)
         </button>
         <button onclick="document.getElementById('restore-file-input').click()"
           style="background:var(--bg3);border:1px solid var(--green);border-radius:var(--radius);color:var(--green);padding:10px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer;letter-spacing:0.5px">
-          ⬆ ΦΟΡΤΩΣΗ BACKUP
+          ⬆ ΦΟΡΤΩΣΗ JSON
         </button>
       </div>
       <input type="file" id="restore-file-input" accept=".json" style="display:none" onchange="importBackupJSON(this)">
       <div style="margin-top:8px;font-size:10px;color:var(--text3);text-align:center">
-        Τελευταίο backup: <span id="last-backup-label" style="color:var(--green);font-family:var(--mono)">${getLastBackupLabel()}</span>
+        Τελευταίο τοπικό backup: <span id="last-backup-label" style="color:var(--green);font-family:var(--mono)">${getLastBackupLabel()}</span>
       </div>
     </div>
 
@@ -3610,6 +3615,21 @@ document.addEventListener('keydown', function(e) {
 });
 
 // ══ BACKUP / RESTORE ══
+async function triggerManualBackup() {
+  if (!gsConnected) { showToast('Δεν υπάρχει σύνδεση με Sheet', 'error'); return; }
+  showToast('⏳ Backup σε εξέλιξη...');
+  try {
+    const res = await gsGet({ action: 'manualBackup' });
+    if (res && res.ok) {
+      showToast('✓ Backup αποθηκεύτηκε στο VMRTIN26_BACKUP Sheet!');
+    } else {
+      showToast('Σφάλμα backup: ' + (res.error || 'unknown'), 'error');
+    }
+  } catch(e) {
+    showToast('Σφάλμα σύνδεσης: ' + e.message, 'error');
+  }
+}
+
 function getLastBackupLabel() {
   const ts = localStorage.getItem('vmrtin26_last_backup');
   if (!ts) return 'Κανένα';
