@@ -1139,6 +1139,10 @@ body {
       <span class="nav-icon">📈</span>
       <span data-el="nav-stats">Στατιστικά</span>
     </button>
+    <button class="nav-item" onclick="showPage('cylinders')" id="nav-cylinders">
+      <span class="nav-icon">🧪</span>
+      <span>Φιάλες</span>
+    </button>
     <button class="nav-item" onclick="showPage('admin')" id="nav-admin">
       <span class="nav-icon">⚙️</span>
       <span data-el="nav-admin">Admin</span>
@@ -1264,6 +1268,55 @@ const getArea = tag => {
 
 // Ξεκινάει κενό — γεμίζει από Import Excel ή Google Sheets sync
 let DETECTORS = [];
+// CYLINDERS: { id, monthKey, num, cylNo, company, gas, expDate, status }
+// monthKey = 'YYYY-MM'
+let CYLINDERS = JSON.parse(localStorage.getItem('vmrtin26_cylinders') || '[]');
+
+function saveCylinders() {
+  localStorage.setItem('vmrtin26_cylinders', JSON.stringify(CYLINDERS));
+}
+
+// ── Push μία φιάλη στο Sheet (upsert) ──
+async function gsSaveCylinder(cyl) {
+  if (!gsConnected) return;
+  try {
+    await gsPost({ action: 'saveCylinder', data: cyl });
+  } catch(err) {
+    console.error('gsSaveCylinder error:', err);
+  }
+}
+
+// ── Διαγραφή φιάλης από Sheet ──
+async function gsDeleteCylinder(id) {
+  if (!gsConnected) return;
+  try {
+    await gsPost({ action: 'deleteCylinder', data: { id } });
+  } catch(err) {
+    console.error('gsDeleteCylinder error:', err);
+  }
+}
+
+function getCurrentMonthKey() {
+  const n = new Date();
+  return n.getFullYear() + '-' + String(n.getMonth()+1).padStart(2,'0');
+}
+
+function getMonthLabel(key) {
+  const [y, m] = key.split('-');
+  const months = ['','ΙΑΝΟΥΑΡΙΟΣ','ΦΕΒΡΟΥΑΡΙΟΣ','ΜΑΡΤΙΟΣ','ΑΠΡΙΛΙΟΣ','ΜΑΙΟΣ','ΙΟΥΝΙΟΣ',
+    'ΙΟΥΛΙΟΣ','ΑΥΓΟΥΣΤΟΣ','ΣΕΠΤΕΜΒΡΙΟΣ','ΟΚΤΩΒΡΙΟΣ','ΝΟΕΜΒΡΙΟΣ','ΔΕΚΕΜΒΡΙΟΣ'];
+  return months[parseInt(m)] + ' ' + y;
+}
+
+function getCylindersForMonth(monthKey) {
+  return CYLINDERS.filter(c => c.monthKey === monthKey)
+    .sort((a,b) => a.num - b.num);
+}
+
+function getNextCylNum(monthKey) {
+  const cyls = getCylindersForMonth(monthKey);
+  return cyls.length > 0 ? Math.max(...cyls.map(c=>c.num)) + 1 : 1;
+}
 
 // Load saved detectors from localStorage (persists between sessions)
 function loadSavedDetectors() {
@@ -1399,6 +1452,14 @@ async function syncFromSheets() {
       }
       // Αν ο admin δεν είναι στο Sheet, κράτα τον τοπικό
       if (!USERS['admin'] && adminUser) USERS['admin'] = adminUser;
+    }
+
+    // Load cylinders — Sheet κερδίζει πάνω από localStorage
+    const cylRes = await gsGet({ action: 'getCylinders' });
+    if (cylRes.cylinders && cylRes.cylinders.length > 0) {
+      CYLINDERS.length = 0;
+      cylRes.cylinders.forEach(c => CYLINDERS.push(c));
+      saveCylinders(); // ενημερώνει και localStorage
     }
 
     gsConnected = true;
@@ -2121,6 +2182,7 @@ function showPage(page) {
   else if (page === 'add') renderAdd(mc);
   else if (page === 'stats') renderStats(mc);
   else if (page === 'admin') renderAdmin(mc);
+  else if (page === 'cylinders') renderCylinders(mc);
 
   mc.scrollTop = 0;
 }
@@ -3708,6 +3770,390 @@ function importBackupJSON(input) {
   reader.readAsText(file, 'utf-8');
 }
 
+
+
+// ════════════════════════════════════════
+// ΦΙΑΛΕΣ ΒΑΘΜΟΝΟΜΗΣΗΣ
+// ════════════════════════════════════════
+let currentCylMonth = getCurrentMonthKey();
+
+function renderCylinders(mc) {
+  currentCylMonth = currentCylMonth || getCurrentMonthKey();
+  const cyls = getCylindersForMonth(currentCylMonth);
+  
+  // Βρες όλους τους μήνες που έχουν φιάλες
+  const allMonths = [...new Set(CYLINDERS.map(c => c.monthKey))].sort().reverse();
+  if (!allMonths.includes(currentCylMonth)) allMonths.unshift(currentCylMonth);
+
+  mc.innerHTML = `
+    <div class="page-header">
+      <div class="page-title">🧪 ΦΙΑΛΕΣ ΒΑΘΜΟΝΟΜΗΣΗΣ</div>
+      <div class="page-sub">Μητρώο φιαλών ανά μήνα</div>
+    </div>
+
+    <!-- Month selector -->
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;padding:0 2px">
+      <select id="cyl-month-sel" onchange="currentCylMonth=this.value;renderCylinders(document.getElementById('main-content'))"
+        style="flex:1;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);padding:8px;font-family:var(--font);font-size:13px">
+        ${allMonths.map(m => `<option value="${m}" ${m===currentCylMonth?'selected':''}>${getMonthLabel(m)}</option>`).join('')}
+      </select>
+      <button onclick="showNewMonthModal()"
+        style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text2);padding:8px 12px;font-size:18px;cursor:pointer">
+        +
+      </button>
+      <button onclick="exportCylindersPDF('${currentCylMonth}')"
+        style="background:var(--blue);border:none;border-radius:var(--radius);color:#fff;padding:8px 12px;font-size:16px;cursor:pointer" title="PDF">
+        📄
+      </button>
+    </div>
+
+    <!-- Λίστα φιαλών -->
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
+      <div style="background:var(--bg3);padding:10px 12px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+        <span style="font-family:var(--cond);font-weight:700;font-size:13px;color:var(--accent)">${getMonthLabel(currentCylMonth)}</span>
+        <span style="font-size:11px;color:var(--text3)">${cyls.length} φιάλες</span>
+      </div>
+      ${cyls.length === 0 ? `
+        <div style="padding:24px;text-align:center;color:var(--text3);font-size:13px">
+          Καμία φιάλη καταχωρημένη<br>
+          <span style="font-size:11px">Πάτα + για νέα φιάλη</span>
+        </div>
+      ` : `
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead>
+            <tr style="background:var(--bg3)">
+              <th style="padding:7px 8px;text-align:center;color:var(--text3);font-family:var(--cond);font-weight:700;border-bottom:1px solid var(--border);width:36px">Α/Α</th>
+              <th style="padding:7px 8px;text-align:left;color:var(--text3);font-family:var(--cond);font-weight:700;border-bottom:1px solid var(--border)">ΦΙΑΛΗ</th>
+              <th style="padding:7px 8px;text-align:left;color:var(--text3);font-family:var(--cond);font-weight:700;border-bottom:1px solid var(--border)">ΑΕΡΙΟ</th>
+              <th style="padding:7px 8px;text-align:center;color:var(--text3);font-family:var(--cond);font-weight:700;border-bottom:1px solid var(--border)">ΛΗΞΗ</th>
+              <th style="padding:7px 4px;text-align:center;color:var(--text3);font-family:var(--cond);font-weight:700;border-bottom:1px solid var(--border);width:60px">ΚΑΤΑΣΤΑΣΗ</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${cyls.map(c => `
+            <tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="editCylinder('${c.id}')">
+              <td style="padding:8px;text-align:center;font-family:var(--mono);color:var(--accent);font-weight:700">${c.num}</td>
+              <td style="padding:8px">
+                <div style="font-family:var(--mono);font-size:11px;color:var(--text1)">${c.cylNo}</div>
+                <div style="font-size:10px;color:var(--text3)">${c.company}</div>
+              </td>
+              <td style="padding:8px;font-size:11px;color:var(--text2)">${c.gas}</td>
+              <td style="padding:8px;text-align:center;font-size:10px;color:${isExpired(c.expDate)?'var(--red2)':'var(--text3)'};font-family:var(--mono)">${c.expDate||'—'}</td>
+              <td style="padding:8px;text-align:center">
+                <span style="font-size:10px;font-family:var(--cond);font-weight:700;padding:2px 6px;border-radius:8px;
+                  background:${c.status==='ΑΔΕΙΑ'?'rgba(230,50,50,0.15)':'rgba(80,200,80,0.15)'};
+                  color:${c.status==='ΑΔΕΙΑ'?'var(--red2)':'var(--green2)'}">
+                  ${c.status||'ΕΝΕΡΓΗ'}
+                </span>
+              </td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      `}
+    </div>
+
+    <!-- Κουμπί νέας φιάλης -->
+    <button onclick="showAddCylinderModal('${currentCylMonth}')"
+      style="width:100%;background:var(--accent);border:none;border-radius:var(--radius);color:#fff;padding:12px;font-family:var(--cond);font-weight:700;font-size:14px;cursor:pointer;letter-spacing:0.5px">
+      + ΝΕΟΣ ΚΑΤΑΧΩΡΗΣΗ ΦΙΑΛΗΣ
+    </button>
+  `;
+}
+
+function isExpired(dateStr) {
+  if (!dateStr) return false;
+  // Προσπάθησε να αναγνωρίσεις διάφορες μορφές
+  const parts = dateStr.replace(/\//g,'-').split('-');
+  if (parts.length < 2) return false;
+  try {
+    let d;
+    if (parts[0].length === 4) d = new Date(dateStr); // YYYY-MM-DD
+    else d = new Date(parts[2]+'-'+parts[1].padStart(2,'0')+'-'+(parts[0]||'01').padStart(2,'0'));
+    return d < new Date();
+  } catch(e) { return false; }
+}
+
+function showAddCylinderModal(monthKey) {
+  const nextNum = getNextCylNum(monthKey);
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay open';
+  overlay.id = 'cyl-add-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box" style="max-width:420px;width:calc(100% - 32px)">
+      <div class="modal-title">🧪 ΝΕΑ ΦΙΑΛΗ — ${getMonthLabel(monthKey)}</div>
+      <div style="display:grid;gap:10px;margin-bottom:16px">
+        <div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--cond);font-weight:700">Α/Α</div>
+          <input id="cyl-num" type="number" value="${nextNum}" min="1"
+            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);padding:8px;font-family:var(--mono);font-size:14px;box-sizing:border-box">
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--cond);font-weight:700">ΑΡΙΘΜΟΣ ΦΙΑΛΗΣ *</div>
+          <input id="cyl-no" type="text" placeholder="π.χ. BC746523"
+            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);padding:8px;font-family:var(--mono);font-size:14px;box-sizing:border-box">
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--cond);font-weight:700">ΕΤΑΙΡΕΙΑ</div>
+          <input id="cyl-company" type="text" placeholder="π.χ. CalGaz, Sensidyne, GM"
+            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);padding:8px;font-family:var(--font);font-size:13px;box-sizing:border-box">
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--cond);font-weight:700">ΑΕΡΙΟ / ΣΥΓΚΕΝΤΡΩΣΗ *</div>
+          <input id="cyl-gas" type="text" placeholder="π.χ. H2S 25ppm, Propane 1.05%"
+            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);padding:8px;font-family:var(--font);font-size:13px;box-sizing:border-box">
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--cond);font-weight:700">ΗΜ. ΛΗΞΗΣ</div>
+          <input id="cyl-exp" type="text" placeholder="π.χ. Sep 2027, 19/04/2028"
+            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);padding:8px;font-family:var(--mono);font-size:13px;box-sizing:border-box">
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--cond);font-weight:700">ΚΑΤΑΣΤΑΣΗ</div>
+          <select id="cyl-status"
+            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);padding:8px;font-family:var(--cond);font-size:13px">
+            <option value="ΕΝΕΡΓΗ">ΕΝΕΡΓΗ</option>
+            <option value="ΑΔΕΙΑ">ΑΔΕΙΑ</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <button onclick="document.getElementById('cyl-add-overlay').remove()"
+          style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text2);padding:10px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer">
+          ΑΚΥΡΩΣΗ
+        </button>
+        <button onclick="saveCylinder('${monthKey}')"
+          style="background:var(--accent);border:none;border-radius:var(--radius);color:#fff;padding:10px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer">
+          ΑΠΟΘΗΚΕΥΣΗ
+        </button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if(e.target===overlay) overlay.remove(); });
+  setTimeout(() => document.getElementById('cyl-no')?.focus(), 100);
+}
+
+function saveCylinder(monthKey) {
+  const cylNo   = document.getElementById('cyl-no').value.trim();
+  const gas     = document.getElementById('cyl-gas').value.trim();
+  if (!cylNo || !gas) { showToast('Συμπλήρωσε φιάλη και αέριο','error'); return; }
+  const cyl = {
+    id:       Date.now().toString(),
+    monthKey,
+    num:      parseInt(document.getElementById('cyl-num').value) || getNextCylNum(monthKey),
+    cylNo,
+    company:  document.getElementById('cyl-company').value.trim(),
+    gas,
+    expDate:  document.getElementById('cyl-exp').value.trim(),
+    status:   document.getElementById('cyl-status').value,
+  };
+  CYLINDERS.push(cyl);
+  saveCylinders();
+  gsSaveCylinder(cyl);
+  document.getElementById('cyl-add-overlay').remove();
+  showToast('✓ Φιάλη ' + cyl.num + ' αποθηκεύτηκε');
+  renderCylinders(document.getElementById('main-content'));
+}
+
+function editCylinder(id) {
+  const cyl = CYLINDERS.find(c => c.id === id);
+  if (!cyl) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay open';
+  overlay.id = 'cyl-edit-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box" style="max-width:420px;width:calc(100% - 32px)">
+      <div class="modal-title">✏️ ΕΠΕΞΕΡΓΑΣΙΑ ΦΙΑΛΗΣ ${cyl.num}</div>
+      <div style="display:grid;gap:10px;margin-bottom:16px">
+        <div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--cond);font-weight:700">ΑΡΙΘΜΟΣ ΦΙΑΛΗΣ</div>
+          <input id="ecyl-no" type="text" value="${cyl.cylNo}"
+            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);padding:8px;font-family:var(--mono);font-size:14px;box-sizing:border-box">
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--cond);font-weight:700">ΕΤΑΙΡΕΙΑ</div>
+          <input id="ecyl-company" type="text" value="${cyl.company}"
+            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);padding:8px;font-family:var(--font);font-size:13px;box-sizing:border-box">
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--cond);font-weight:700">ΑΕΡΙΟ / ΣΥΓΚΕΝΤΡΩΣΗ</div>
+          <input id="ecyl-gas" type="text" value="${cyl.gas}"
+            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);padding:8px;font-family:var(--font);font-size:13px;box-sizing:border-box">
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--cond);font-weight:700">ΗΜ. ΛΗΞΗΣ</div>
+          <input id="ecyl-exp" type="text" value="${cyl.expDate}"
+            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);padding:8px;font-family:var(--mono);font-size:13px;box-sizing:border-box">
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--cond);font-weight:700">ΚΑΤΑΣΤΑΣΗ</div>
+          <select id="ecyl-status"
+            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);padding:8px;font-family:var(--cond);font-size:13px">
+            <option value="ΕΝΕΡΓΗ" ${cyl.status==='ΕΝΕΡΓΗ'?'selected':''}>ΕΝΕΡΓΗ</option>
+            <option value="ΑΔΕΙΑ"  ${cyl.status==='ΑΔΕΙΑ' ?'selected':''}>ΑΔΕΙΑ</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+        <button onclick="document.getElementById('cyl-edit-overlay').remove()"
+          style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text2);padding:10px;font-family:var(--cond);font-weight:700;font-size:12px;cursor:pointer">
+          ΑΚΥΡΩΣΗ
+        </button>
+        <button onclick="deleteCylinder('${id}')"
+          style="background:var(--bg3);border:1px solid var(--red);border-radius:var(--radius);color:var(--red2);padding:10px;font-family:var(--cond);font-weight:700;font-size:12px;cursor:pointer">
+          🗑 ΔΙΑΓΡΑΦΗ
+        </button>
+        <button onclick="updateCylinder('${id}')"
+          style="background:var(--accent);border:none;border-radius:var(--radius);color:#fff;padding:10px;font-family:var(--cond);font-weight:700;font-size:12px;cursor:pointer">
+          ΑΠΟΘΗΚΕΥΣΗ
+        </button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if(e.target===overlay) overlay.remove(); });
+}
+
+function updateCylinder(id) {
+  const idx = CYLINDERS.findIndex(c => c.id === id);
+  if (idx < 0) return;
+  CYLINDERS[idx].cylNo   = document.getElementById('ecyl-no').value.trim();
+  CYLINDERS[idx].company = document.getElementById('ecyl-company').value.trim();
+  CYLINDERS[idx].gas     = document.getElementById('ecyl-gas').value.trim();
+  CYLINDERS[idx].expDate = document.getElementById('ecyl-exp').value.trim();
+  CYLINDERS[idx].status  = document.getElementById('ecyl-status').value;
+  saveCylinders();
+  gsSaveCylinder(CYLINDERS[idx]);
+  document.getElementById('cyl-edit-overlay').remove();
+  showToast('✓ Φιάλη ενημερώθηκε');
+  renderCylinders(document.getElementById('main-content'));
+}
+
+function deleteCylinder(id) {
+  if (!confirm('Διαγραφή φιάλης;')) return;
+  CYLINDERS = CYLINDERS.filter(c => c.id !== id);
+  saveCylinders();
+  gsDeleteCylinder(id);
+  document.getElementById('cyl-edit-overlay').remove();
+  showToast('✓ Φιάλη διαγράφηκε');
+  renderCylinders(document.getElementById('main-content'));
+}
+
+function showNewMonthModal() {
+  const now = new Date();
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay open';
+  overlay.innerHTML = `
+    <div class="modal-box" style="max-width:320px;width:calc(100% - 32px)">
+      <div class="modal-title">📅 ΕΠΙΛΟΓΗ ΜΗΝΑ</div>
+      <div style="margin-bottom:16px">
+        <input type="month" id="new-month-input" value="${getCurrentMonthKey()}"
+          style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);padding:10px;font-family:var(--font);font-size:14px;box-sizing:border-box">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <button onclick="this.closest('.modal-overlay').remove()"
+          style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text2);padding:10px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer">
+          ΑΚΥΡΩΣΗ
+        </button>
+        <button onclick="selectNewMonth()"
+          style="background:var(--accent);border:none;border-radius:var(--radius);color:#fff;padding:10px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer">
+          ΟΚ
+        </button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if(e.target===overlay) overlay.remove(); });
+}
+
+function selectNewMonth() {
+  const val = document.getElementById('new-month-input').value;
+  if (!val) return;
+  currentCylMonth = val;
+  document.querySelector('.modal-overlay')?.remove();
+  renderCylinders(document.getElementById('main-content'));
+}
+
+// ── PDF Export φιαλών ──
+function exportCylindersPDF(monthKey) {
+  const cyls = getCylindersForMonth(monthKey);
+  const label = getMonthLabel(monthKey);
+  const rows = cyls.map(c => `
+    <tr>
+      <td style="text-align:center;font-weight:700;color:#1a5fa8">${c.num}</td>
+      <td style="font-family:monospace;font-size:11px">${c.cylNo}</td>
+      <td style="font-size:11px">${c.company||'—'}</td>
+      <td style="font-size:11px">${c.gas}</td>
+      <td style="font-size:11px;text-align:center;color:${isExpired(c.expDate)?'#cc2222':'#333'}">${c.expDate||'—'}</td>
+      <td style="text-align:center">
+        <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;
+          background:${c.status==='ΑΔΕΙΑ'?'#fde8e8':'#e8fde8'};
+          color:${c.status==='ΑΔΕΙΑ'?'#cc2222':'#227722'}">
+          ${c.status||'ΕΝΕΡΓΗ'}
+        </span>
+      </td>
+    </tr>`).join('');
+
+  const html = `<!DOCTYPE html><html lang="el"><head><meta charset="UTF-8">
+<title>Φιάλες ${label}</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 0; padding: 16px; background: #fff; color: #222; }
+  .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; border-bottom:2px solid #1a2535; padding-bottom:10px; }
+  .logo { font-size:18px; font-weight:900; color:#1a2535; letter-spacing:1px; }
+  .logo span { color:#e8620c; }
+  .title { font-size:14px; font-weight:700; color:#1a5fa8; text-align:right; }
+  .subtitle { font-size:11px; color:#666; }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  th { background:#1a2535; color:#60aaee; padding:8px; text-align:left; font-family:Arial; font-weight:700; font-size:10px; letter-spacing:0.5px; }
+  th:first-child { text-align:center; width:40px; }
+  td { padding:8px; border-bottom:1px solid #e0e0e0; vertical-align:middle; }
+  tr:nth-child(even) td { background:#f8f9fa; }
+  .footer { margin-top:20px; font-size:10px; color:#999; text-align:center; border-top:1px solid #ddd; padding-top:8px; }
+  .date-row { margin-top:12px; display:flex; justify-content:center; gap:16px; align-items:center; }
+  @media print { .no-print { display:none!important; } }
+</style></head><body>
+<div class="header">
+  <div>
+    <div class="logo">VMR<span>TIN</span>26</div>
+    <div class="subtitle">Motor Oil Refineries · Instruments Dept</div>
+  </div>
+  <div class="title">
+    ΜΗΤΡΩΟ ΦΙΑΛΩΝ ΒΑΘΜΟΝΟΜΗΣΗΣ<br>
+    <span style="color:#e8620c">${label}</span>
+  </div>
+</div>
+<table>
+  <thead>
+    <tr>
+      <th>Α/Α</th>
+      <th>ΑΡΙΘΜΟΣ ΦΙΑΛΗΣ</th>
+      <th>ΕΤΑΙΡΕΙΑ</th>
+      <th>ΑΕΡΙΟ / ΣΥΓΚΕΝΤΡΩΣΗ</th>
+      <th style="text-align:center">ΗΜ. ΛΗΞΗΣ</th>
+      <th style="text-align:center">ΚΑΤΑΣΤΑΣΗ</th>
+    </tr>
+  </thead>
+  <tbody>${rows || '<tr><td colspan="6" style="text-align:center;color:#999;padding:20px">Καμία φιάλη</td></tr>'}</tbody>
+</table>
+<div class="footer" id="cyl-footer">Motor Oil Refineries · Instruments Dept · VMRTIN26</div>
+<div class="no-print date-row">
+  <label style="font-size:13px;font-weight:600">📅 Ημερομηνία εγγράφου:</label>
+  <input type="text" placeholder="π.χ. 07/06/2026"
+    style="border:1px solid #ccc;border-radius:4px;padding:6px 10px;font-size:13px;width:120px;text-align:center"
+    oninput="document.getElementById('cyl-footer').textContent='Motor Oil Refineries · Instruments Dept · VMRTIN26 · '+this.value">
+</div>
+<div class="no-print" style="text-align:center;margin-top:12px">
+  <button onclick="window.print()" style="background:#e8620c;color:#fff;border:none;padding:10px 28px;font-size:14px;font-weight:700;border-radius:6px;cursor:pointer;margin-right:8px">🖨 ΕΚΤΥΠΩΣΗ</button>
+  <button onclick="window.close()" style="background:#555;color:#fff;border:none;padding:10px 20px;font-size:14px;border-radius:6px;cursor:pointer">✕ Κλείσιμο</button>
+</div>
+</body></html>`;
+
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const win  = window.open(url, '_blank');
+  if (!win) showToast('Επίτρεψε τα pop-ups', 'error');
+  else setTimeout(() => URL.revokeObjectURL(url), 3000);
+}
 
 // ══ SERVICE WORKER (PWA) ══
 if ('serviceWorker' in navigator) {
