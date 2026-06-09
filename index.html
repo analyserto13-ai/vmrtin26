@@ -2398,7 +2398,14 @@ function renderDetectorDetail(mc) {
       ${d.location ? `<div style="font-size:13px;color:var(--text2);margin:4px 0">${d.location}</div>` : ''}
       <div class="detail-meta">
         <span class="meta-badge ${d.type==='GAS'?'meta-gas':'meta-fire'}">${d.type}</span>
-        <span class="meta-badge meta-area">${d.area}</span>
+        ${ROLES[currentUser.role].canAdmin ? `
+        <span class="meta-badge meta-area" style="cursor:pointer;position:relative" title="Κλικ για αλλαγή περιοχής" onclick="toggleAreaPicker('${d.tag}',this)">
+          📍 ${d.area} ▾
+          <select id="area-picker" style="display:none;position:absolute;top:100%;left:0;z-index:999;background:var(--bg3);color:var(--text1);border:1px solid var(--border);border-radius:6px;padding:4px;font-size:12px;min-width:120px"
+            onchange="setDetArea('${d.tag}',this.value)" onclick="event.stopPropagation()">
+            ${DET_AREAS.map(a => `<option value="${a}" ${d.area===a?'selected':''}>${a}</option>`).join('')}
+          </select>
+        </span>` : `<span class="meta-badge meta-area">${d.area}</span>`}
         <span class="meta-badge meta-area">${d.category || ''}</span>
       </div>
       <div style="margin-top:12px;padding:10px 12px;background:var(--bg3);border-radius:var(--radius);border-left:3px solid ${alertColor}">
@@ -2421,12 +2428,6 @@ function renderDetectorDetail(mc) {
         <span style="font-size:12px;color:var(--text3)">Επόμενος:</span>
         <input type="date" class="form-input" style="width:140px;padding:4px 8px;font-size:12px"
           value="${nextDate||''}" onchange="setDetNextDate('${d.tag}',this.value)">
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
-        <span style="font-size:12px;color:var(--text3)">Περιοχή:</span>
-        <select class="interval-select" onchange="setDetArea('${d.tag}',this.value)">
-          ${DET_AREAS.map(a => `<option value="${a}" ${d.area===a?'selected':''}>${a}</option>`).join('')}
-        </select>
       </div>` : ''}
     </div>
     ${ROLES[currentUser.role].canAdd ? `
@@ -2464,6 +2465,24 @@ function setDetNextDate(tag, val) {
     det.nextCalDate = val;
     gsUpdateDetector({ tag, nextCalDate: val });
     renderDetectorDetail(document.getElementById('main-content'));
+  }
+}
+
+function toggleAreaPicker(tag, spanEl) {
+  const sel = spanEl.querySelector('#area-picker');
+  if (!sel) return;
+  if (sel.style.display === 'none') {
+    sel.style.display = 'block';
+    sel.focus();
+    // Κλείσιμο αν κλικάρεις αλλού
+    setTimeout(() => {
+      document.addEventListener('click', function closer() {
+        sel.style.display = 'none';
+        document.removeEventListener('click', closer);
+      }, { once: true });
+    }, 0);
+  } else {
+    sel.style.display = 'none';
   }
 }
 
