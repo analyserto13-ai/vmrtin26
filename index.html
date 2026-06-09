@@ -2421,6 +2421,12 @@ function renderDetectorDetail(mc) {
         <span style="font-size:12px;color:var(--text3)">Επόμενος:</span>
         <input type="date" class="form-input" style="width:140px;padding:4px 8px;font-size:12px"
           value="${nextDate||''}" onchange="setDetNextDate('${d.tag}',this.value)">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+        <span style="font-size:12px;color:var(--text3)">Περιοχή:</span>
+        <select class="interval-select" onchange="setDetArea('${d.tag}',this.value)">
+          ${DET_AREAS.map(a => `<option value="${a}" ${d.area===a?'selected':''}>${a}</option>`).join('')}
+        </select>
       </div>` : ''}
     </div>
     ${ROLES[currentUser.role].canAdd ? `
@@ -2459,6 +2465,15 @@ function setDetNextDate(tag, val) {
     gsUpdateDetector({ tag, nextCalDate: val });
     renderDetectorDetail(document.getElementById('main-content'));
   }
+}
+
+function setDetArea(tag, val) {
+  const det = DETECTORS.find(d => d.tag === tag);
+  if (!det || det.area === val) return;
+  det.area = val;
+  gsUpdateDetector({ tag, area: val });
+  showToast('✓ Περιοχή → ' + val);
+  renderDetectorDetail(document.getElementById('main-content'));
 }
 
 function addForDetector(tag) {
