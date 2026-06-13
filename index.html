@@ -1686,11 +1686,12 @@ function getIntervalMonths(det) {
 
 function getLastCalDate(det) {
   if (!det.entries.length) return null;
+  const normalize = s => (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
   const sorted = det.entries
-    .filter(e => e.task.toLowerCase().includes('βαθμονόμηση') || e.task.toLowerCase().includes('calib'))
+    .filter(e => normalize(e.task).includes('βαθμονομηση') || normalize(e.task).includes('calib'))
     .sort((a,b) => b.date.localeCompare(a.date));
   if (sorted.length) return sorted[0].date;
-  // fallback: last entry
+  // fallback: most recent entry
   return det.entries.slice().sort((a,b) => b.date.localeCompare(a.date))[0].date;
 }
 
@@ -1721,8 +1722,13 @@ function getDaysUntil(dateStr) {
 
 function formatDate(dateStr) {
   if (!dateStr) return '—';
+  // Παίρνουμε απευθείας από το string yyyy-mm-dd για να αποφύγουμε timezone offset
+  const parts = String(dateStr).split('T')[0].split('-');
+  if (parts.length === 3) return parts[2] + '/' + parts[1] + '/' + parts[0];
   const d = new Date(dateStr);
-  return d.toLocaleDateString('el-GR', { day:'2-digit', month:'2-digit', year:'numeric' });
+  const dd = String(d.getDate()).padStart(2,'0');
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  return dd + '/' + mm + '/' + d.getFullYear();
 }
 
 // ══════════════════════════════════════════
@@ -1831,7 +1837,7 @@ function parseExcelFile(buffer, filename) {
         // ΠΑΡΑΤΗΡΗΣΕΙΣ = ΕΡΓΑΣΙΑ/ΠΑΡΑΤΗΡΗΣΕΙΣ μόνο αν διαφέρει από τον τύπο
         const notesVal = (remarksVal && remarksVal !== typeVal2) ? remarksVal : '';
 
-        if (!taskVal && !finalTech) continue;
+        if (!finalTech && !taskVal && !cylVal) continue; // skip εντελώς κενές γραμμές
 
         entries.push({ date: dateStr, task: taskVal, cylinder: finalCyl, tech: finalTech, notes: notesVal });
       }
