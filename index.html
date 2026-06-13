@@ -1064,18 +1064,156 @@ body {
   cursor: pointer;
 }
 
-/* ── MONTH CALENDAR ── */
-.month-header {
+/* ── SCHEDULE PAGE ── */
+.month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius2);
+  padding: 10px 14px;
+  margin-bottom: 12px;
+}
+.month-nav-btn {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text2);
+  font-size: 18px;
+  width: 36px; height: 36px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: border-color 0.15s, color 0.15s;
+}
+.month-nav-btn:hover { border-color: var(--accent); color: var(--accent); }
+.month-label {
   font-family: var(--cond);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: var(--radius);
+  transition: background 0.15s;
+}
+.month-label:hover { background: var(--bg3); color: var(--accent); }
+.sched-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.sched-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius2);
+  padding: 10px 12px;
+  text-align: center;
+}
+.sched-card .sched-num {
+  font-family: var(--mono);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1;
+  margin-bottom: 3px;
+}
+.sched-card .sched-lbl {
+  font-size: 10px;
+  font-family: var(--cond);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--text3);
+}
+.sched-card.total  { border-top: 3px solid var(--accent); }
+.sched-card.done   { border-top: 3px solid var(--green);  }
+.sched-card.pend   { border-top: 3px solid var(--red);    }
+.sched-card.total .sched-num { color: var(--accent2); }
+.sched-card.done  .sched-num { color: var(--green2);  }
+.sched-card.pend  .sched-num { color: var(--red2);    }
+.sched-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin-bottom: 5px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  position: relative;
+}
+.sched-item:hover, .sched-item:active {
+  border-color: var(--accent);
+  background: var(--bg3);
+}
+.sched-item.has-entry {
+  border-left: 3px solid var(--green);
+  background: linear-gradient(90deg, rgba(30,122,66,0.05) 0%, transparent 50%);
+}
+.sched-item.no-entry {
+  border-left: 3px solid var(--border);
+}
+.sched-num-badge {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+  min-width: 22px;
+  text-align: right;
+}
+.sched-tag {
+  font-family: var(--mono);
   font-size: 13px;
   font-weight: 600;
   color: var(--accent);
+  min-width: 105px;
+}
+.sched-loc {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sched-date {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+  white-space: nowrap;
+}
+.sched-done-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+  font-family: var(--cond);
+  letter-spacing: 0.3px;
+}
+.sched-area-header {
+  font-family: var(--cond);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
   letter-spacing: 1px;
   text-transform: uppercase;
-  padding: 8px 0 6px;
+  padding: 6px 0 4px;
   margin-top: 8px;
   border-bottom: 1px solid var(--border);
   margin-bottom: 6px;
+}
+.sched-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.sched-toolbar .filter-row {
+  flex: 1;
+  margin-bottom: 0;
 }
 </style>
 </head>
@@ -1138,6 +1276,10 @@ body {
     <button class="nav-item" onclick="showPage('stats')" id="nav-stats">
       <span class="nav-icon">📈</span>
       <span data-el="nav-stats">Στατιστικά</span>
+    </button>
+    <button class="nav-item" onclick="showPage('schedule')" id="nav-schedule">
+      <span class="nav-icon">📅</span>
+      <span>Πρόγραμμα</span>
     </button>
     <button class="nav-item" onclick="showPage('cylinders')" id="nav-cylinders">
       <span class="nav-icon">🧪</span>
@@ -1618,7 +1760,8 @@ function parseExcelFile(buffer, filename) {
     const wb = XLSX.read(buffer, { type: 'array', cellDates: true });
 
     let imported = 0, updated = 0, entryCount = 0;
-    const sheetNames = wb.SheetNames.filter(n => n !== 'INDEX' && n.includes('-'));
+    const SKIP_SHEETS = new Set(['INDEX','Sheet1','Sheet2','Sheet3','Φύλλο1','Φύλλο2','Φύλλο3','LEGEND','README','SUMMARY','VBA','NOTES']);
+    const sheetNames = wb.SheetNames.filter(n => !SKIP_SHEETS.has(n.trim()));
 
     // ── Read INDEX for metadata (Row 3 = headers, Row 4+ = data) ──
     const indexData = {};
@@ -1673,15 +1816,20 @@ function parseExcelFile(buffer, filename) {
         if (!dateStr) continue;
 
         // Handle NNC format: col2=tech, no cylinder
-        const taskVal = row[colTask] ? String(row[colTask]).trim() : '';
-        const cylVal  = row[colCyl]  ? String(row[colCyl]).trim()  : '';
-        const techVal = row[colTech] ? String(row[colTech]).trim() : '';
-        const notesVal= row[colNotes]? String(row[colNotes]).trim(): '';
+        const remarksVal = row[colTask]  ? String(row[colTask]).trim()  : ''; // ΕΡΓΑΣΙΑ/ΠΑΡΑΤΗΡΗΣΕΙΣ
+        const cylVal     = row[colCyl]   ? String(row[colCyl]).trim()   : '';
+        const techVal    = row[colTech]  ? String(row[colTech]).trim()  : '';
+        const typeVal2   = row[colNotes] ? String(row[colNotes]).trim() : ''; // ΤΥΠΟΣ ΕΡΓΑΣΙΑΣ
 
         // Skip if cylinder value looks like a technician name (NNC has no cylinder col)
         const isCylNum = cylVal && /^\d+$/.test(cylVal.replace(/[^\d]/g,'').slice(0,4));
         const finalCyl  = isCylNum ? cylVal : '';
         const finalTech = isCylNum ? techVal : (cylVal || techVal);
+
+        // ΤΥΠΟΣ ΕΡΓΑΣΙΑΣ χρησιμοποιείται ως task αν η ΕΡΓΑΣΙΑ/ΠΑΡΑΤΗΡΗΣΕΙΣ είναι κενή
+        const taskVal = remarksVal || typeVal2;
+        // ΠΑΡΑΤΗΡΗΣΕΙΣ = ΕΡΓΑΣΙΑ/ΠΑΡΑΤΗΡΗΣΕΙΣ μόνο αν διαφέρει από τον τύπο
+        const notesVal = (remarksVal && remarksVal !== typeVal2) ? remarksVal : '';
 
         if (!taskVal && !finalTech) continue;
 
@@ -1700,11 +1848,13 @@ function parseExcelFile(buffer, filename) {
         if (meta.nextCalDate && meta.nextCalDate !== det.nextCalDate) { det.nextCalDate = meta.nextCalDate; changed = true; }
         if (description      && description      !== det.description) { det.description = description;      changed = true; }
 
-        // Προσθέτει ΜΟΝΟ νέες εγγραφές
-        const existingKeys = new Set(det.entries.map(e => e.date + '|' + e.task));
+        // Προσθέτει ΜΟΝΟ νέες εγγραφές (key = date+tech — αρκεί για μοναδικότητα)
+        const existingKeys = new Set(det.entries.map(e => e.date + '|' + (e.tech||'')));
         for (const e of entries) {
-          if (!existingKeys.has(e.date + '|' + e.task)) {
+          const key = e.date + '|' + (e.tech||'');
+          if (!existingKeys.has(key)) {
             det.entries.push(e);
+            existingKeys.add(key);
             entryCount++;
             changed = true;
           }
@@ -1745,6 +1895,10 @@ function parseExcelFile(buffer, filename) {
           tag: d.tag, description: d.description||'', location: d.location||'',
           type: d.type||'GAS', area: d.area||'', category: d.category||'',
           calInterval: d.calInterval||'', nextCalDate: d.nextCalDate||'',
+          entries: (d.entries||[]).map(e => ({
+            date: e.date, task: e.task||'', cylinder: e.cylinder||'',
+            tech: e.tech||'', notes: e.notes||''
+          }))
         }))}).catch(()=>{});
         allChanged.forEach(d => { delete d._imported; delete d._updated; });
       }
@@ -2182,6 +2336,7 @@ function showPage(page) {
   else if (page === 'add') renderAdd(mc);
   else if (page === 'stats') renderStats(mc);
   else if (page === 'admin') renderAdmin(mc);
+  else if (page === 'schedule') renderSchedule(mc);
   else if (page === 'cylinders') renderCylinders(mc);
 
   mc.scrollTop = 0;
@@ -3806,9 +3961,325 @@ function importBackupJSON(input) {
 
 
 
+
+
 // ════════════════════════════════════════
-// ΦΙΑΛΕΣ ΒΑΘΜΟΝΟΜΗΣΗΣ
+// ΜΗΝΙΑΙΟ ΠΡΟΓΡΑΜΜΑ ΕΛΕΓΧΩΝ
 // ════════════════════════════════════════
+let scheduleMonthYear = (() => {
+  const n = new Date();
+  return { m: n.getMonth(), y: n.getFullYear() };
+})();
+let schedFilterArea = 'all';
+let schedShowAll = false; // false = μόνο αυτοί που λήγουν, true = όλοι
+
+const MONTH_NAMES_FULL = [
+  'ΙΑΝΟΥΑΡΙΟΣ','ΦΕΒΡΟΥΑΡΙΟΣ','ΜΑΡΤΙΟΣ','ΑΠΡΙΛΙΟΣ','ΜΑΙΟΣ','ΙΟΥΝΙΟΣ',
+  'ΙΟΥΛΙΟΣ','ΑΥΓΟΥΣΤΟΣ','ΣΕΠΤΕΜΒΡΙΟΣ','ΟΚΤΩΒΡΙΟΣ','ΝΟΕΜΒΡΙΟΣ','ΔΕΚΕΜΒΡΙΟΣ'
+];
+
+function schedPrevMonth() {
+  scheduleMonthYear.m--;
+  if (scheduleMonthYear.m < 0) { scheduleMonthYear.m = 11; scheduleMonthYear.y--; }
+  renderSchedule(document.getElementById('main-content'));
+}
+function schedNextMonth() {
+  scheduleMonthYear.m++;
+  if (scheduleMonthYear.m > 11) { scheduleMonthYear.m = 0; scheduleMonthYear.y++; }
+  renderSchedule(document.getElementById('main-content'));
+}
+function schedGoToday() {
+  const n = new Date();
+  scheduleMonthYear = { m: n.getMonth(), y: n.getFullYear() };
+  renderSchedule(document.getElementById('main-content'));
+}
+function schedPickMonth() {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay open';
+  overlay.innerHTML = `
+    <div class="modal-box" style="max-width:300px;width:calc(100% - 32px)">
+      <div class="modal-title">📅 ΕΠΙΛΟΓΗ ΜΗΝΑ</div>
+      <div style="margin-bottom:16px">
+        <input type="month" id="sched-month-input"
+          value="${scheduleMonthYear.y}-${String(scheduleMonthYear.m+1).padStart(2,'0')}"
+          style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:10px;font-family:var(--font);font-size:14px;box-sizing:border-box">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <button onclick="this.closest('.modal-overlay').remove()"
+          style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text2);padding:10px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer">ΑΚΥΡΩΣΗ</button>
+        <button onclick="schedApplyMonthPick()"
+          style="background:var(--accent);border:none;border-radius:var(--radius);color:#fff;padding:10px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer">ΟΚ</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if(e.target===overlay) overlay.remove(); });
+}
+function schedApplyMonthPick() {
+  const val = document.getElementById('sched-month-input')?.value;
+  if (!val) return;
+  const [y, m] = val.split('-').map(Number);
+  scheduleMonthYear = { m: m-1, y };
+  document.querySelector('.modal-overlay')?.remove();
+  renderSchedule(document.getElementById('main-content'));
+}
+
+function getDetectorsForSchedMonth(m, y) {
+  // Επιστρέφει ανιχνευτές που έχουν nextCalDate σε αυτόν τον μήνα/έτος
+  return DETECTORS.filter(d => {
+    const nd = getNextCalDate(d);
+    if (!nd) return false;
+    const dd = new Date(nd);
+    return dd.getFullYear() === y && dd.getMonth() === m;
+  });
+}
+
+function detHasEntryInMonth(d, m, y) {
+  // Έχει ο ανιχνευτής εγγραφή εντός αυτού του μήνα;
+  return d.entries.some(e => {
+    const ed = new Date(e.date);
+    return ed.getFullYear() === y && ed.getMonth() === m;
+  });
+}
+
+function getLastEntryInMonth(d, m, y) {
+  return d.entries.filter(e => {
+    const ed = new Date(e.date);
+    return ed.getFullYear() === y && ed.getMonth() === m;
+  }).sort((a,b) => b.date.localeCompare(a.date))[0] || null;
+}
+
+function renderSchedule(mc) {
+  const { m, y } = scheduleMonthYear;
+  const monthLabel = MONTH_NAMES_FULL[m] + ' ' + y;
+  const areas = ['all', ...new Set(DETECTORS.map(d => d.area).filter(Boolean))].sort((a,b) => a==='all'?-1:b==='all'?1:a.localeCompare(b));
+
+  // Ανιχνευτές που λήγουν αυτόν τον μήνα
+  let dets = getDetectorsForSchedMonth(m, y);
+  if (schedFilterArea !== 'all') dets = dets.filter(d => d.area === schedFilterArea);
+
+  const total = dets.length;
+  const doneList  = dets.filter(d => detHasEntryInMonth(d, m, y));
+  const pendList  = dets.filter(d => !detHasEntryInMonth(d, m, y));
+  const doneCount = doneList.length;
+  const pendCount = pendList.length;
+
+  // Ομαδοποίηση ανά area
+  const byArea = {};
+  dets.forEach(d => {
+    const a = d.area || '—';
+    if (!byArea[a]) byArea[a] = [];
+    byArea[a].push(d);
+  });
+
+  let itemHtml = '';
+  let idx = 0;
+  Object.entries(byArea).sort(([a],[b]) => a.localeCompare(b)).forEach(([area, list]) => {
+    itemHtml += `<div class="sched-area-header">📍 ${area} (${list.length})</div>`;
+    list.forEach(d => {
+      idx++;
+      const nd = getNextCalDate(d);
+      const done = detHasEntryInMonth(d, m, y);
+      const lastEntry = getLastEntryInMonth(d, m, y);
+      const badgeStyle = done
+        ? 'background:#d8f0e4;color:#0a4820;border:1px solid #80c8a0'
+        : 'background:#fde0de;color:#8a1010;border:1px solid #e08080';
+      const badgeText = done ? '✓ ΕΛΕΓΧΘΗΚΕ' : '⏳ ΕΚΚΡΕΜΕΙ';
+
+      itemHtml += `
+        <div class="sched-item ${done ? 'has-entry' : 'no-entry'}" onclick="openDetector('${d.tag}')">
+          <div class="sched-num-badge">${idx}</div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span class="sched-tag">${d.tag}</span>
+              <span class="sched-done-badge" style="${badgeStyle}">${badgeText}</span>
+            </div>
+            <div class="sched-loc">${d.location || d.area || ''} · ${d.type || ''}</div>
+            ${done && lastEntry ? `<div style="font-size:11px;color:var(--green2);margin-top:2px;font-family:var(--mono)">🔧 ${lastEntry.task} · ${lastEntry.tech}</div>` : ''}
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            ${nd ? `<div class="sched-date">${formatDate(nd)}</div>` : ''}
+            <div style="font-size:10px;color:var(--text3)">${d.calInterval || '—'}μ</div>
+          </div>
+          <span style="color:var(--text3);font-size:16px;margin-left:4px">›</span>
+        </div>`;
+    });
+  });
+
+  if (total === 0) {
+    itemHtml = `<div class="empty-state"><div class="empty-icon">📅</div><div class="empty-text">Δεν υπάρχουν προγραμματισμένοι έλεγχοι για ${MONTH_NAMES_FULL[m]}</div></div>`;
+  }
+
+  mc.innerHTML = `
+    <div class="page-header">
+      <div class="page-title">📅 ΜΗΝΙΑΙΟ ΠΡΟΓΡΑΜΜΑ</div>
+      <div class="page-sub">Ανιχνευτές ανά μήνα λήξης</div>
+    </div>
+
+    <!-- Month Navigator -->
+    <div class="month-nav">
+      <button class="month-nav-btn" onclick="schedPrevMonth()">‹</button>
+      <div style="text-align:center">
+        <div class="month-label" onclick="schedPickMonth()">${MONTH_NAMES_FULL[m]}</div>
+        <div style="font-family:var(--mono);font-size:12px;color:var(--text3)">${y}</div>
+      </div>
+      <button class="month-nav-btn" onclick="schedNextMonth()">›</button>
+    </div>
+
+    <!-- Today button + PDF -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+      <button onclick="schedGoToday()"
+        style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text2);padding:8px;font-family:var(--cond);font-weight:700;font-size:12px;cursor:pointer;letter-spacing:0.3px">
+        📍 ΤΡΕΧΩΝ ΜΗΝΑΣ
+      </button>
+      <button onclick="exportSchedulePDF(${m},${y})"
+        style="background:var(--blue);border:none;border-radius:var(--radius);color:#fff;padding:8px;font-family:var(--cond);font-weight:700;font-size:12px;cursor:pointer;letter-spacing:0.3px">
+        📄 ΕΞΑΓΩΓΗ PDF
+      </button>
+    </div>
+
+    <!-- Summary cards -->
+    <div class="sched-summary">
+      <div class="sched-card total">
+        <div class="sched-num">${total}</div>
+        <div class="sched-lbl">ΣΥΝΟΛΟ</div>
+      </div>
+      <div class="sched-card done">
+        <div class="sched-num">${doneCount}</div>
+        <div class="sched-lbl">ΕΛΕΓΧΘΗΚΑΝ</div>
+      </div>
+      <div class="sched-card pend">
+        <div class="sched-num">${pendCount}</div>
+        <div class="sched-lbl">ΕΚΚΡΕΜΟΥΝ</div>
+      </div>
+    </div>
+
+    <!-- Progress bar -->
+    ${total > 0 ? `
+    <div style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+        <span style="font-size:11px;color:var(--text3);font-family:var(--cond);font-weight:600">ΠΡΟΟΔΟΣ ΜΗΝΑ</span>
+        <span style="font-size:11px;font-family:var(--mono);color:var(--green2)">${Math.round(doneCount/total*100)}%</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" style="width:${Math.round(doneCount/total*100)}%;background:var(--green)"></div>
+      </div>
+    </div>` : ''}
+
+    <!-- Area filter -->
+    <div class="filter-row" style="margin-bottom:12px">
+      ${areas.map(a => `<div class="filter-pill ${schedFilterArea===a?'active':''}" onclick="schedFilterArea='${a}';renderSchedule(document.getElementById('main-content'))">${a==='all'?'Όλες οι περιοχές':a}</div>`).join('')}
+    </div>
+
+    <!-- Detector list grouped by area -->
+    <div id="sched-list">
+      ${itemHtml}
+    </div>
+  `;
+}
+
+function exportSchedulePDF(m, y) {
+  const { m: cm, y: cy } = scheduleMonthYear;
+  const usedM = (m !== undefined) ? m : cm;
+  const usedY = (y !== undefined) ? y : cy;
+  const dets = getDetectorsForSchedMonth(usedM, usedY);
+  const monthLabel = MONTH_NAMES_FULL[usedM] + ' ' + usedY;
+
+  const rows = dets.map((d, i) => {
+    const done = detHasEntryInMonth(d, usedM, usedY);
+    const lastEntry = getLastEntryInMonth(d, usedM, usedY);
+    const nd = getNextCalDate(d);
+    return `<tr>
+      <td style="text-align:center;color:#888;font-size:11px">${i+1}</td>
+      <td style="font-family:monospace;font-size:12px;color:#1a5fa8;font-weight:700">${d.tag}</td>
+      <td style="font-size:11px">${d.location || d.area || '—'}</td>
+      <td style="text-align:center;font-size:10px;color:#666">${d.type || '—'}</td>
+      <td style="text-align:center;font-family:monospace;font-size:11px">${nd ? formatDate(nd) : '—'}</td>
+      <td style="text-align:center">
+        <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;
+          background:${done?'#e8fde8':'#fde8e8'};color:${done?'#1a6a2a':'#8a1010'}">
+          ${done ? '✓ ΕΓΙΝΕ' : '⏳ ΕΚΚΡΕΜΕΙ'}
+        </span>
+      </td>
+      <td style="font-size:10px;color:#555">${lastEntry ? lastEntry.task : '—'}</td>
+      <td style="font-size:10px;color:#555">${lastEntry ? lastEntry.tech : '—'}</td>
+    </tr>`;
+  }).join('');
+
+  const doneCount = dets.filter(d => detHasEntryInMonth(d, usedM, usedY)).length;
+  const pendCount = dets.length - doneCount;
+
+  const html = `<!DOCTYPE html><html lang="el"><head><meta charset="UTF-8">
+<title>Πρόγραμμα ${monthLabel}</title>
+<style>
+  body { font-family: Arial, sans-serif; margin:0; padding:14px; background:#fff; color:#222; font-size:12px; }
+  .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px; border-bottom:2px solid #1a2535; padding-bottom:8px; }
+  .logo { font-size:18px; font-weight:900; color:#1a2535; letter-spacing:1px; }
+  .logo span { color:#e8620c; }
+  .title { font-size:14px; font-weight:700; color:#1a5fa8; text-align:right; }
+  .subtitle { font-size:10px; color:#666; }
+  .summary { display:flex; gap:16px; margin-bottom:12px; }
+  .sum-box { background:#f0f4f8; border-radius:6px; padding:8px 14px; text-align:center; min-width:80px; }
+  .sum-val { font-size:20px; font-weight:900; color:#1a5fa8; }
+  .sum-lbl { font-size:9px; color:#666; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; }
+  table { width:100%; border-collapse:collapse; font-size:11px; }
+  th { background:#1a2535; color:#60aaee; padding:6px 8px; text-align:left; font-size:9px; letter-spacing:0.5px; font-weight:700; }
+  td { padding:6px 8px; border-bottom:1px solid #e8e8e8; vertical-align:middle; }
+  tr:nth-child(even) td { background:#f8f9fa; }
+  .footer { margin-top:16px; font-size:9px; color:#999; text-align:center; border-top:1px solid #ddd; padding-top:6px; }
+  .date-row { margin-top:10px; display:flex; justify-content:center; gap:12px; align-items:center; }
+  @media print { .no-print { display:none!important; } }
+</style></head><body>
+<div class="header">
+  <div>
+    <div class="logo">VMR<span>TIN</span>26</div>
+    <div class="subtitle">Motor Oil Refineries · Instruments Dept</div>
+  </div>
+  <div class="title">
+    ΜΗΝΙΑΙΟ ΠΡΟΓΡΑΜΜΑ ΕΛΕΓΧΩΝ<br>
+    <span style="color:#e8620c">${monthLabel}</span>
+  </div>
+</div>
+<div class="summary">
+  <div class="sum-box"><div class="sum-val" style="color:#1a5fa8">${dets.length}</div><div class="sum-lbl">ΣΥΝΟΛΟ</div></div>
+  <div class="sum-box"><div class="sum-val" style="color:#1e7a42">${doneCount}</div><div class="sum-lbl">ΕΓΙΝΑΝ</div></div>
+  <div class="sum-box"><div class="sum-val" style="color:#c0251e">${pendCount}</div><div class="sum-lbl">ΕΚΚΡΕΜΟΥΝ</div></div>
+</div>
+<table>
+  <thead>
+    <tr>
+      <th style="width:30px">Α/Α</th>
+      <th>TAG</th>
+      <th>ΤΟΠΟΘΕΣΙΑ</th>
+      <th style="text-align:center">ΤΥΠΟΣ</th>
+      <th style="text-align:center">ΗΜ.ΕΛΕΓΧΟΥ</th>
+      <th style="text-align:center">ΚΑΤΑΣΤΑΣΗ</th>
+      <th>ΕΡΓΑΣΙΑ</th>
+      <th>ΤΕΧΝΙΤΗΣ</th>
+    </tr>
+  </thead>
+  <tbody>${rows || '<tr><td colspan="8" style="text-align:center;padding:16px;color:#aaa">Δεν υπάρχουν ανιχνευτές</td></tr>'}</tbody>
+</table>
+<div class="footer" id="sched-footer">Motor Oil Refineries · Instruments Dept · VMRTIN26</div>
+<div class="no-print date-row">
+  <label style="font-size:12px;font-weight:600">📅 Ημερομηνία εγγράφου:</label>
+  <input type="text" placeholder="π.χ. 07/06/2026"
+    style="border:1px solid #ccc;border-radius:4px;padding:5px 10px;font-size:12px;width:120px;text-align:center"
+    oninput="document.getElementById('sched-footer').textContent='Motor Oil Refineries · Instruments Dept · VMRTIN26 · '+this.value">
+</div>
+<div class="no-print" style="text-align:center;margin-top:10px">
+  <button onclick="window.print()" style="background:#1a5fa8;color:#fff;border:none;padding:9px 26px;font-size:13px;font-weight:700;border-radius:6px;cursor:pointer;margin-right:8px">🖨 ΕΚΤΥΠΩΣΗ</button>
+  <button onclick="window.close()" style="background:#555;color:#fff;border:none;padding:9px 18px;font-size:13px;border-radius:6px;cursor:pointer">✕ Κλείσιμο</button>
+</div>
+</body></html>`;
+
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const win  = window.open(url, '_blank');
+  if (!win) showToast('Επίτρεψε τα pop-ups', 'error');
+  else setTimeout(() => URL.revokeObjectURL(url), 3000);
+}
+
+
 let currentCylMonth = getCurrentMonthKey();
 
 function renderCylinders(mc) {
