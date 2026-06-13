@@ -1800,11 +1800,11 @@ function parseExcelFile(buffer, filename) {
       headerRow.forEach((h, i) => {
         if (!h) return;
         const hs = String(h).toUpperCase();
-        if (hs.includes('ΗΜΕΡ') || hs.includes('DATE'))   colDate  = i;
-        if (hs.includes('ΕΡΓΑΣ') || hs.includes('TASK'))  colTask  = i;
-        if (hs.includes('ΦΙΑΛ') || hs.includes('CYL'))    colCyl   = i;
-        if (hs.includes('ΤΕΧΝ') || hs.includes('TECH') || hs.includes('NAME')) colTech = i;
-        if (hs.includes('ΣΗΜΕ') || hs.includes('NOTE') || hs.includes('ΤΥΠΟΣ')) colNotes = i;
+        if (hs.includes('ΗΜΕΡ') || hs.includes('DATE'))                             colDate  = i;
+        if ((hs.includes('ΕΡΓΑΣ') || hs.includes('TASK')) && !hs.includes('ΤΥΠΟΣ')) colTask  = i;
+        if (hs.includes('ΦΙΑΛ') || hs.includes('CYL'))                             colCyl   = i;
+        if (hs.includes('ΤΕΧΝ') || hs.includes('TECH') || hs.includes('NAME'))     colTech  = i;
+        if (hs.includes('ΣΗΜΕ') || hs.includes('NOTE') || hs.includes('ΤΥΠΟΣ'))    colNotes = i;
       });
 
       // Parse entries from row 10+ (index 9)
