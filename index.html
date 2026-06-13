@@ -2473,7 +2473,7 @@ function renderDashboard(mc) {
       <div class="card-title">ΤΕΛΕΥΤΑΙΕΣ ΕΓΓΡΑΦΕΣ</div>
       ${recent.length ? recent.map(e => `
         <div class="history-entry" onclick="openDetector('${e.tag}')" style="cursor:pointer">
-          <div class="hist-date">${e.date}</div>
+          <div class="hist-date">${formatDate(e.date)}</div>
           <div class="hist-task">${e.task} <span style="font-family:var(--mono);font-size:12px;color:var(--accent)">${e.tag}</span></div>
           <div class="hist-tech">${e.tech}</div>
         </div>
@@ -2602,7 +2602,7 @@ function renderDetectorDetail(mc) {
     <div class="card-title" style="margin-bottom:10px">${t('history')}</div>
     ${d.entries.length ? d.entries.slice().reverse().map(e => `
       <div class="history-entry">
-        <div class="hist-date">📅 ${e.date}</div>
+        <div class="hist-date">📅 ${formatDate(e.date)}</div>
         <div class="hist-task">🔧 ${e.task}</div>
         <div class="hist-tech">👤 ${e.tech} ${e.cylinder ? `<span class="hist-cylinder">${e.cylinder}</span>` : ''}</div>
         ${e.notes ? `<div class="hist-tech" style="margin-top:4px;font-style:italic">💬 ${e.notes}</div>` : ''}
@@ -3544,7 +3544,7 @@ function exportMonthlyPDF(entries, monthLabel, month, year) {
         <tr>
           <td class="tag">${e.tag}</td>
           <td>${e.description || '—'}</td>
-          <td style="font-family:monospace">${e.date}</td>
+          <td style="font-family:monospace">${formatDate(e.date)}</td>
           <td>${e.task}</td>
           <td>${e.tech}</td>
           <td class="sign-cell"></td>
