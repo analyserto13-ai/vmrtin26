@@ -15,6 +15,7 @@
 <meta name="deploy" content="github-pages">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27><text y=%27.9em%27 font-size=%2790%27>🔥</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
 :root {
   /* ── LIGHT STEEL INDUSTRIAL PALETTE ── */
@@ -2216,8 +2217,24 @@ function loginSuccess(u, user) {
   document.getElementById('app').style.display = 'flex';
   document.getElementById('app').style.flexDirection = 'column';
   setupUser();
-  showPage('dashboard');
-  syncFromSheets();
+
+  // Έλεγξε αν υπάρχει ?tag= στο URL
+  const urlTag = new URLSearchParams(window.location.search).get('tag');
+  if (urlTag) {
+    syncFromSheets().then(() => {
+      const det = DETECTORS.find(d => d.tag === urlTag.toUpperCase());
+      if (det) {
+        selectedDetector = det;
+        showPage('detector-detail');
+      } else {
+        showToast(`Δεν βρέθηκε ανιχνευτής: ${urlTag}`, 'error');
+        showPage('dashboard');
+      }
+    });
+  } else {
+    showPage('dashboard');
+    syncFromSheets();
+  }
 }
 
 function showLoginError() {
@@ -2592,12 +2609,16 @@ function renderDetectorDetail(mc) {
       </div>` : ''}
     </div>
     ${ROLES[currentUser.role].canAdd ? `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
       <button class="submit-btn" onclick="addForDetector('${d.tag}')">➕ Νέα εγγραφή</button>
       <button class="submit-btn" onclick="exportPDF('detector')" style="background:var(--blue)">📄 PDF</button>
+      <button class="submit-btn" onclick="showQRModal('${d.tag}')" style="background:var(--purple)">📲 QR</button>
     </div>
     ` : `
-    <button class="submit-btn" onclick="exportPDF('detector')" style="background:var(--blue);margin-bottom:14px">📄 Εξαγωγή PDF</button>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+      <button class="submit-btn" onclick="exportPDF('detector')" style="background:var(--blue)">📄 Εξαγωγή PDF</button>
+      <button class="submit-btn" onclick="showQRModal('${d.tag}')" style="background:var(--purple)">📲 QR</button>
+    </div>
     `}
     <div class="card-title" style="margin-bottom:10px">${t('history')}</div>
     ${d.entries.length ? d.entries.slice().reverse().map(e => `
@@ -2654,6 +2675,90 @@ function setDetArea(tag, val) {
   gsUpdateDetector({ tag, area: val });
   showToast('✓ Περιοχή → ' + val);
   renderDetectorDetail(document.getElementById('main-content'));
+}
+
+function showQRModal(tag) {
+  const det = DETECTORS.find(d => d.tag === tag);
+  if (!det) return;
+
+  // URL που θα κωδικοποιηθεί — η app με ?tag=
+  const base = window.location.origin + window.location.pathname;
+  const qrUrl = `${base}?tag=${encodeURIComponent(tag)}`;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay open';
+  overlay.id = 'qr-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box" style="text-align:center;max-width:320px">
+      <div class="modal-title" style="margin-bottom:4px">📲 QR Ανιχνευτή</div>
+      <div style="font-family:var(--mono);font-size:14px;color:var(--accent);margin-bottom:2px">${tag}</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:16px">${det.description || det.location || det.area}</div>
+
+      <div id="qr-canvas-wrap" style="display:inline-block;padding:12px;background:#fff;border-radius:8px;border:2px solid var(--border);margin-bottom:14px"></div>
+
+      <div style="font-size:10px;color:var(--text3);margin-bottom:16px;word-break:break-all;padding:0 8px">${qrUrl}</div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <button class="modal-ok" onclick="downloadQR('${tag}')">⬇ Αποθήκευση</button>
+        <button class="modal-ok" onclick="printQR('${tag}')" style="background:var(--green)">🖨 Εκτύπωση</button>
+      </div>
+      <button class="modal-cancel" style="width:100%" onclick="document.getElementById('qr-overlay').remove()">Κλείσιμο</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  // Κλείσιμο με click έξω
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+  // Δημιουργία QR με qrcode.js
+  setTimeout(() => {
+    const wrap = document.getElementById('qr-canvas-wrap');
+    if (!wrap) return;
+    new QRCode(wrap, {
+      text: qrUrl,
+      width: 200,
+      height: 200,
+      colorDark: '#1a2030',
+      colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel.M
+    });
+  }, 100);
+}
+
+function downloadQR(tag) {
+  const wrap = document.getElementById('qr-canvas-wrap');
+  const canvas = wrap?.querySelector('canvas');
+  if (!canvas) { showToast('QR δεν είναι έτοιμο','error'); return; }
+  const link = document.createElement('a');
+  link.download = `QR_${tag}.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+  showToast('✓ Αποθηκεύτηκε QR_' + tag + '.png');
+}
+
+function printQR(tag) {
+  const wrap = document.getElementById('qr-canvas-wrap');
+  const canvas = wrap?.querySelector('canvas');
+  if (!canvas) { showToast('QR δεν είναι έτοιμο','error'); return; }
+  const det = DETECTORS.find(d => d.tag === tag);
+  const imgData = canvas.toDataURL('image/png');
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><title>QR ${tag}</title>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
+    .tag { font-size: 22px; font-weight: bold; letter-spacing: 2px; margin-bottom: 6px; }
+    .desc { font-size: 13px; color: #555; margin-bottom: 16px; }
+    img { width: 220px; height: 220px; }
+    .url { font-size: 9px; color: #999; margin-top: 10px; word-break: break-all; }
+    @media print { body { margin: 0; } }
+  </style></head><body>
+    <div class="tag">${tag}</div>
+    <div class="desc">${det?.description || det?.location || det?.area || ''}</div>
+    <img src="${imgData}">
+    <div class="url">VMRTIN26 · Motor Oil Refineries</div>
+  </body></html>`);
+  win.document.close();
+  setTimeout(() => win.print(), 400);
 }
 
 function addForDetector(tag) {
