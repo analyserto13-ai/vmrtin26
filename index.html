@@ -2473,7 +2473,7 @@ function renderDashboard(mc) {
       <div class="card-title">ΤΕΛΕΥΤΑΙΕΣ ΕΓΓΡΑΦΕΣ</div>
       ${recent.length ? recent.map(e => `
         <div class="history-entry" onclick="openDetector('${e.tag}')" style="cursor:pointer">
-          <div class="hist-date">${formatDate(e.date)}</div>
+          <div class="hist-date">${e.date}</div>
           <div class="hist-task">${e.task} <span style="font-family:var(--mono);font-size:12px;color:var(--accent)">${e.tag}</span></div>
           <div class="hist-tech">${e.tech}</div>
         </div>
@@ -2602,7 +2602,7 @@ function renderDetectorDetail(mc) {
     <div class="card-title" style="margin-bottom:10px">${t('history')}</div>
     ${d.entries.length ? d.entries.slice().reverse().map(e => `
       <div class="history-entry">
-        <div class="hist-date">📅 ${formatDate(e.date)}</div>
+        <div class="hist-date">📅 ${e.date}</div>
         <div class="hist-task">🔧 ${e.task}</div>
         <div class="hist-tech">👤 ${e.tech} ${e.cylinder ? `<span class="hist-cylinder">${e.cylinder}</span>` : ''}</div>
         ${e.notes ? `<div class="hist-tech" style="margin-top:4px;font-style:italic">💬 ${e.notes}</div>` : ''}
@@ -3544,7 +3544,7 @@ function exportMonthlyPDF(entries, monthLabel, month, year) {
         <tr>
           <td class="tag">${e.tag}</td>
           <td>${e.description || '—'}</td>
-          <td style="font-family:monospace">${formatDate(e.date)}</td>
+          <td style="font-family:monospace">${e.date}</td>
           <td>${e.task}</td>
           <td>${e.tech}</td>
           <td class="sign-cell"></td>
@@ -4322,7 +4322,13 @@ function renderCylinders(mc) {
     <div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">
       <div style="background:var(--bg3);padding:10px 12px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
         <span style="font-family:var(--cond);font-weight:700;font-size:13px;color:var(--accent)">${getMonthLabel(currentCylMonth)}</span>
-        <span style="font-size:11px;color:var(--text3)">${cyls.length} φιάλες</span>
+        <span style="font-size:11px;color:var(--text3)">
+          ${cyls.length} φιάλες
+          ${cyls.length > 0 ? `·
+            <span style="color:var(--green2)">${cyls.filter(c=>c.status!=='ΑΔΕΙΑ').length} ενεργές</span>
+            ${cyls.filter(c=>c.status==='ΑΔΕΙΑ').length > 0 ? `· <span style="color:var(--red2)">${cyls.filter(c=>c.status==='ΑΔΕΙΑ').length} άδειες</span>` : ''}
+          ` : ''}
+        </span>
       </div>
       ${cyls.length === 0 ? `
         <div style="padding:24px;text-align:center;color:var(--text3);font-size:13px">
@@ -4333,29 +4339,40 @@ function renderCylinders(mc) {
         <table style="width:100%;border-collapse:collapse;font-size:12px">
           <thead>
             <tr style="background:var(--bg3)">
-              <th style="padding:7px 8px;text-align:center;color:var(--text3);font-family:var(--cond);font-weight:700;border-bottom:1px solid var(--border);width:36px">Α/Α</th>
+              <th style="padding:7px 8px;text-align:center;color:var(--text3);font-family:var(--cond);font-weight:700;border-bottom:1px solid var(--border);width:32px">Α/Α</th>
               <th style="padding:7px 8px;text-align:left;color:var(--text3);font-family:var(--cond);font-weight:700;border-bottom:1px solid var(--border)">ΦΙΑΛΗ</th>
               <th style="padding:7px 8px;text-align:left;color:var(--text3);font-family:var(--cond);font-weight:700;border-bottom:1px solid var(--border)">ΑΕΡΙΟ</th>
               <th style="padding:7px 8px;text-align:center;color:var(--text3);font-family:var(--cond);font-weight:700;border-bottom:1px solid var(--border)">ΛΗΞΗ</th>
-              <th style="padding:7px 4px;text-align:center;color:var(--text3);font-family:var(--cond);font-weight:700;border-bottom:1px solid var(--border);width:60px">ΚΑΤΑΣΤΑΣΗ</th>
+              <th style="padding:7px 4px;text-align:center;color:var(--text3);font-family:var(--cond);font-weight:700;border-bottom:1px solid var(--border);width:80px">ΚΑΤΑΣΤΑΣΗ</th>
+              <th style="padding:7px 4px;text-align:center;color:var(--text3);font-family:var(--cond);font-weight:700;border-bottom:1px solid var(--border);width:32px"></th>
             </tr>
           </thead>
           <tbody>
             ${cyls.map(c => `
-            <tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="editCylinder('${c.id}')">
+            <tr style="border-bottom:1px solid var(--border)">
               <td style="padding:8px;text-align:center;font-family:var(--mono);color:var(--accent);font-weight:700">${c.num}</td>
               <td style="padding:8px">
                 <div style="font-family:var(--mono);font-size:11px;color:var(--text1)">${c.cylNo}</div>
-                <div style="font-size:10px;color:var(--text3)">${c.company}</div>
+                <div style="font-size:10px;color:var(--text3)">${c.company||''}</div>
               </td>
               <td style="padding:8px;font-size:11px;color:var(--text2)">${c.gas}</td>
               <td style="padding:8px;text-align:center;font-size:10px;color:${isExpired(c.expDate)?'var(--red2)':'var(--text3)'};font-family:var(--mono)">${c.expDate||'—'}</td>
-              <td style="padding:8px;text-align:center">
-                <span style="font-size:10px;font-family:var(--cond);font-weight:700;padding:2px 6px;border-radius:8px;
-                  background:${c.status==='ΑΔΕΙΑ'?'rgba(230,50,50,0.15)':'rgba(80,200,80,0.15)'};
-                  color:${c.status==='ΑΔΕΙΑ'?'var(--red2)':'var(--green2)'}">
+              <td style="padding:6px 4px;text-align:center">
+                <button onclick="toggleCylStatus('${c.id}')"
+                  title="Εναλλαγή κατάστασης"
+                  style="font-size:10px;font-family:var(--cond);font-weight:700;padding:4px 7px;border-radius:8px;cursor:pointer;border:1px solid;
+                    background:${c.status==='ΑΔΕΙΑ'?'rgba(230,50,50,0.12)':'rgba(80,200,80,0.12)'};
+                    color:${c.status==='ΑΔΕΙΑ'?'var(--red2)':'var(--green2)'};
+                    border-color:${c.status==='ΑΔΕΙΑ'?'var(--red)':'var(--green)'}">
                   ${c.status||'ΕΝΕΡΓΗ'}
-                </span>
+                </button>
+              </td>
+              <td style="padding:6px 4px;text-align:center">
+                <button onclick="editCylinder('${c.id}')"
+                  title="Επεξεργασία"
+                  style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text3);width:28px;height:28px;cursor:pointer;font-size:13px;display:inline-flex;align-items:center;justify-content:center">
+                  ✏️
+                </button>
               </td>
             </tr>`).join('')}
           </tbody>
@@ -4366,7 +4383,7 @@ function renderCylinders(mc) {
     <!-- Κουμπί νέας φιάλης -->
     <button onclick="showAddCylinderModal('${currentCylMonth}')"
       style="width:100%;background:var(--accent);border:none;border-radius:var(--radius);color:#fff;padding:12px;font-family:var(--cond);font-weight:700;font-size:14px;cursor:pointer;letter-spacing:0.5px">
-      + ΝΕΟΣ ΚΑΤΑΧΩΡΗΣΗ ΦΙΑΛΗΣ
+      + ΝΕΑ ΚΑΤΑΧΩΡΗΣΗ ΦΙΑΛΗΣ
     </button>
   `;
 }
@@ -4382,6 +4399,17 @@ function isExpired(dateStr) {
     else d = new Date(parts[2]+'-'+parts[1].padStart(2,'0')+'-'+(parts[0]||'01').padStart(2,'0'));
     return d < new Date();
   } catch(e) { return false; }
+}
+
+function toggleCylStatus(id) {
+  const idx = CYLINDERS.findIndex(c => c.id === id);
+  if (idx < 0) return;
+  const prev = CYLINDERS[idx].status || 'ΕΝΕΡΓΗ';
+  CYLINDERS[idx].status = prev === 'ΑΔΕΙΑ' ? 'ΕΝΕΡΓΗ' : 'ΑΔΕΙΑ';
+  saveCylinders();
+  gsSaveCylinder(CYLINDERS[idx]);
+  showToast('✓ Κατάσταση → ' + CYLINDERS[idx].status);
+  renderCylinders(document.getElementById('main-content'));
 }
 
 function showAddCylinderModal(monthKey) {
