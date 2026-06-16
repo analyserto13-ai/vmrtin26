@@ -1421,11 +1421,13 @@ function saveCylinders() {
 
 // ── Push μία φιάλη στο Sheet (upsert) ──
 async function gsSaveCylinder(cyl) {
-  if (!gsConnected) return;
   try {
     await gsPost({ action: 'saveCylinder', data: cyl });
+    return true;
   } catch(err) {
     console.error('gsSaveCylinder error:', err);
+    showToast('⚠ Φιάλη αποθηκεύτηκε τοπικά — δεν έφτασε στο Sheet', 'error');
+    return false;
   }
 }
 
@@ -1597,12 +1599,19 @@ async function syncFromSheets() {
       if (!USERS['admin'] && adminUser) USERS['admin'] = adminUser;
     }
 
-    // Load cylinders — Sheet κερδίζει πάνω από localStorage
+    // Load cylinders — merge: Sheet κερδίζει για υπάρχοντα, τοπικά unsent προστίθενται
     const cylRes = await gsGet({ action: 'getCylinders' });
     if (cylRes.cylinders && cylRes.cylinders.length > 0) {
+      // Κράτα τοπικές φιάλες που ΔΕΝ υπάρχουν στο Sheet (δεν πρόλαβαν να σταλούν)
+      const sheetIds = new Set(cylRes.cylinders.map(c => c.id));
+      const localOnly = CYLINDERS.filter(c => !sheetIds.has(c.id));
       CYLINDERS.length = 0;
       cylRes.cylinders.forEach(c => CYLINDERS.push(c));
-      saveCylinders(); // ενημερώνει και localStorage
+      // Πρόσθεσε τοπικές φιάλες που δεν στάλθηκαν ακόμα
+      localOnly.forEach(c => CYLINDERS.push(c));
+      saveCylinders();
+      // Στείλε τις unsent στο Sheet
+      localOnly.forEach(c => gsSaveCylinder(c));
     }
 
     gsConnected = true;
@@ -2573,7 +2582,22 @@ function renderDetectorDetail(mc) {
     <button class="back-btn" onclick="showPage('detectors')">← ${t('det-title')}</button>
     <div class="detail-header">
       <div class="detail-tag">${d.tag}</div>
-      ${d.location ? `<div style="font-size:13px;color:var(--text2);margin:4px 0">${d.location}</div>` : ''}
+      ${ROLES[currentUser.role].canAdmin ? `
+      <div style="display:flex;align-items:center;gap:6px;margin:6px 0 2px 0" id="loc-display-${d.tag}">
+        <span style="font-size:13px;color:var(--text2);font-family:var(--mono)">${d.location || '<span style="color:var(--text3);font-style:italic">— χωρίς τοποθεσία —</span>'}</span>
+        <button onclick="startEditLocation('${d.tag}')" title="Επεξεργασία τοποθεσίας"
+          style="background:none;border:none;cursor:pointer;font-size:13px;color:var(--text3);padding:0 2px">✏️</button>
+      </div>
+      <div style="display:none;align-items:center;gap:6px;margin:6px 0 2px 0" id="loc-edit-${d.tag}">
+        <input id="loc-input-${d.tag}" type="text" value="${d.location||''}" placeholder="π.χ. K-2101, Pump Area..."
+          style="font-size:13px;font-family:var(--mono);padding:4px 8px;border:1px solid var(--accent);border-radius:6px;background:var(--bg3);color:var(--text1);width:180px"
+          onkeydown="if(event.key==='Enter')saveLocation('${d.tag}');if(event.key==='Escape')cancelEditLocation('${d.tag}')">
+        <button onclick="saveLocation('${d.tag}')" style="background:var(--green);color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;font-family:var(--cond);font-weight:700">✓</button>
+        <button onclick="cancelEditLocation('${d.tag}')" style="background:var(--bg4);color:var(--text2);border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">✕</button>
+      </div>
+      ` : `
+      ${d.location ? `<div style="font-size:13px;color:var(--text2);margin:4px 0;font-family:var(--mono)">${d.location}</div>` : ''}
+      `}
       <div class="detail-meta">
         <span class="meta-badge ${d.type==='GAS'?'meta-gas':'meta-fire'}">${d.type}</span>
         ${ROLES[currentUser.role].canAdmin ? `
@@ -2674,6 +2698,28 @@ function setDetArea(tag, val) {
   det.area = val;
   gsUpdateDetector({ tag, area: val });
   showToast('✓ Περιοχή → ' + val);
+  renderDetectorDetail(document.getElementById('main-content'));
+}
+
+function startEditLocation(tag) {
+  document.getElementById('loc-display-' + tag).style.display = 'none';
+  const editDiv = document.getElementById('loc-edit-' + tag);
+  editDiv.style.display = 'flex';
+  document.getElementById('loc-input-' + tag).focus();
+}
+
+function cancelEditLocation(tag) {
+  document.getElementById('loc-edit-' + tag).style.display = 'none';
+  document.getElementById('loc-display-' + tag).style.display = 'flex';
+}
+
+function saveLocation(tag) {
+  const det = DETECTORS.find(d => d.tag === tag);
+  if (!det) return;
+  const val = document.getElementById('loc-input-' + tag).value.trim();
+  det.location = val;
+  gsUpdateDetector({ tag, location: val });
+  showToast('✓ Τοποθεσία → ' + (val || '(άδειο)'));
   renderDetectorDetail(document.getElementById('main-content'));
 }
 
@@ -4182,42 +4228,65 @@ function renderSchedule(mc) {
     byArea[a].push(d);
   });
 
+  // Φίλτρο εμφάνισης: 'all' | 'done' | 'pend'
+  const schedViewFilter = window._schedViewFilter || 'all';
+
   let itemHtml = '';
   let idx = 0;
-  Object.entries(byArea).sort(([a],[b]) => a.localeCompare(b)).forEach(([area, list]) => {
-    itemHtml += `<div class="sched-area-header">📍 ${area} (${list.length})</div>`;
-    list.forEach(d => {
-      idx++;
-      const nd = getNextCalDate(d);
-      const done = detHasEntryInMonth(d, m, y);
-      const lastEntry = getLastEntryInMonth(d, m, y);
-      const badgeStyle = done
-        ? 'background:#d8f0e4;color:#0a4820;border:1px solid #80c8a0'
-        : 'background:#fde0de;color:#8a1010;border:1px solid #e08080';
-      const badgeText = done ? '✓ ΕΛΕΓΧΘΗΚΕ' : '⏳ ΕΚΚΡΕΜΕΙ';
-
-      itemHtml += `
-        <div class="sched-item ${done ? 'has-entry' : 'no-entry'}" onclick="openDetector('${d.tag}')">
-          <div class="sched-num-badge">${idx}</div>
-          <div style="flex:1;min-width:0">
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-              <span class="sched-tag">${d.tag}</span>
-              <span class="sched-done-badge" style="${badgeStyle}">${badgeText}</span>
-            </div>
-            <div class="sched-loc">${d.location || d.area || ''} · ${d.type || ''}</div>
-            ${done && lastEntry ? `<div style="font-size:11px;color:var(--green2);margin-top:2px;font-family:var(--mono)">🔧 ${lastEntry.task} · ${lastEntry.tech}</div>` : ''}
-          </div>
-          <div style="text-align:right;flex-shrink:0">
-            ${nd ? `<div class="sched-date">${formatDate(nd)}</div>` : ''}
-            <div style="font-size:10px;color:var(--text3)">${d.calInterval || '—'}μ</div>
-          </div>
-          <span style="color:var(--text3);font-size:16px;margin-left:4px">›</span>
-        </div>`;
-    });
-  });
 
   if (total === 0) {
     itemHtml = `<div class="empty-state"><div class="empty-icon">📅</div><div class="empty-text">Δεν υπάρχουν προγραμματισμένοι έλεγχοι για ${MONTH_NAMES_FULL[m]}</div></div>`;
+  } else {
+    // Φίλτρο ενεργού view
+    const filteredByView = schedViewFilter === 'done' ? doneList :
+                           schedViewFilter === 'pend' ? pendList : dets;
+
+    // Ομαδοποίηση ανά area
+    const byAreaFiltered = {};
+    filteredByView.forEach(d => {
+      const a = d.area || '—';
+      if (!byAreaFiltered[a]) byAreaFiltered[a] = [];
+      byAreaFiltered[a].push(d);
+    });
+
+    if (filteredByView.length === 0) {
+      const emptyMsg = schedViewFilter === 'done'
+        ? 'Κανένας ανιχνευτής δεν έχει ελεγχθεί ακόμα αυτόν τον μήνα'
+        : 'Όλοι οι ανιχνευτές έχουν ελεγχθεί! ✓';
+      itemHtml = `<div class="empty-state"><div class="empty-icon">${schedViewFilter === 'done' ? '📋' : '✅'}</div><div class="empty-text">${emptyMsg}</div></div>`;
+    } else {
+      Object.entries(byAreaFiltered).sort(([a],[b]) => a.localeCompare(b)).forEach(([area, list]) => {
+        itemHtml += `<div class="sched-area-header">📍 ${area} (${list.length})</div>`;
+        list.forEach(d => {
+          idx++;
+          const nd = getNextCalDate(d);
+          const done = detHasEntryInMonth(d, m, y);
+          const lastEntry = getLastEntryInMonth(d, m, y);
+          const badgeStyle = done
+            ? 'background:#d8f0e4;color:#0a4820;border:1px solid #80c8a0'
+            : 'background:#fde0de;color:#8a1010;border:1px solid #e08080';
+          const badgeText = done ? '✓ ΕΛΕΓΧΘΗΚΕ' : '⏳ ΕΚΚΡΕΜΕΙ';
+
+          itemHtml += `
+            <div class="sched-item ${done ? 'has-entry' : 'no-entry'}" onclick="openDetector('${d.tag}')">
+              <div class="sched-num-badge">${idx}</div>
+              <div style="flex:1;min-width:0">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                  <span class="sched-tag">${d.tag}</span>
+                  <span class="sched-done-badge" style="${badgeStyle}">${badgeText}</span>
+                </div>
+                <div class="sched-loc">${d.location || d.area || ''} · ${d.type || ''}</div>
+                ${done && lastEntry ? `<div style="font-size:11px;color:var(--green2);margin-top:2px;font-family:var(--mono)">🔧 ${lastEntry.task} · ${lastEntry.tech}</div>` : ''}
+              </div>
+              <div style="text-align:right;flex-shrink:0">
+                ${nd ? `<div class="sched-date">${formatDate(nd)}</div>` : ''}
+                <div style="font-size:10px;color:var(--text3)">${d.calInterval || '—'}μ</div>
+              </div>
+              <span style="color:var(--text3);font-size:16px;margin-left:4px">›</span>
+            </div>`;
+        });
+      });
+    }
   }
 
   mc.innerHTML = `
@@ -4242,7 +4311,7 @@ function renderSchedule(mc) {
         style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text2);padding:8px;font-family:var(--cond);font-weight:700;font-size:12px;cursor:pointer;letter-spacing:0.3px">
         📍 ΤΡΕΧΩΝ ΜΗΝΑΣ
       </button>
-      <button onclick="exportSchedulePDF(${m},${y})"
+      <button onclick="showSchedulePDFModal(${m},${y})"
         style="background:var(--blue);border:none;border-radius:var(--radius);color:#fff;padding:8px;font-family:var(--cond);font-weight:700;font-size:12px;cursor:pointer;letter-spacing:0.3px">
         📄 ΕΞΑΓΩΓΗ PDF
       </button>
@@ -4250,17 +4319,20 @@ function renderSchedule(mc) {
 
     <!-- Summary cards -->
     <div class="sched-summary">
-      <div class="sched-card total">
+      <div class="sched-card total" style="cursor:pointer" onclick="schedSetFilter('all')" title="Εμφάνιση όλων">
         <div class="sched-num">${total}</div>
         <div class="sched-lbl">ΣΥΝΟΛΟ</div>
+        <div style="font-size:9px;color:var(--accent2);font-family:var(--cond);margin-top:2px">▶ ΟΛΟΙ</div>
       </div>
-      <div class="sched-card done">
+      <div class="sched-card done" style="cursor:pointer" onclick="schedSetFilter('done')" title="Εμφάνιση ελεγχθέντων">
         <div class="sched-num">${doneCount}</div>
         <div class="sched-lbl">ΕΛΕΓΧΘΗΚΑΝ</div>
+        <div style="font-size:9px;color:var(--green2);font-family:var(--cond);margin-top:2px">▶ ΛΙΣΤΑ</div>
       </div>
-      <div class="sched-card pend">
+      <div class="sched-card pend" style="cursor:pointer" onclick="schedSetFilter('pend')" title="Εμφάνιση εκκρεμών">
         <div class="sched-num">${pendCount}</div>
         <div class="sched-lbl">ΕΚΚΡΕΜΟΥΝ</div>
+        <div style="font-size:9px;color:var(--red2);font-family:var(--cond);margin-top:2px">▶ ΛΙΣΤΑ</div>
       </div>
     </div>
 
@@ -4281,6 +4353,33 @@ function renderSchedule(mc) {
       ${areas.map(a => `<div class="filter-pill ${schedFilterArea===a?'active':''}" onclick="schedFilterArea='${a}';renderSchedule(document.getElementById('main-content'))">${a==='all'?'Όλες οι περιοχές':a}</div>`).join('')}
     </div>
 
+    <!-- View filter indicator -->
+    ${total > 0 ? `
+    <div style="display:flex;gap:6px;margin-bottom:10px;align-items:center">
+      <span style="font-size:11px;color:var(--text3);font-family:var(--cond);font-weight:600">ΕΜΦΑΝΙΣΗ:</span>
+      <div onclick="schedSetFilter('all')"
+        style="font-size:11px;font-family:var(--cond);font-weight:700;padding:4px 10px;border-radius:12px;cursor:pointer;
+          background:${(window._schedViewFilter||'all')==='all'?'var(--accent)':'var(--bg3)'};
+          color:${(window._schedViewFilter||'all')==='all'?'#fff':'var(--text3)'};
+          border:1px solid ${(window._schedViewFilter||'all')==='all'?'var(--accent)':'var(--border)'}">
+        ΟΛΟΙ (${total})
+      </div>
+      <div onclick="schedSetFilter('done')"
+        style="font-size:11px;font-family:var(--cond);font-weight:700;padding:4px 10px;border-radius:12px;cursor:pointer;
+          background:${window._schedViewFilter==='done'?'var(--green)':'var(--bg3)'};
+          color:${window._schedViewFilter==='done'?'#fff':'var(--text3)'};
+          border:1px solid ${window._schedViewFilter==='done'?'var(--green)':'var(--border)'}">
+        ΕΛΕΓΧΘΗΚΑΝ (${doneCount})
+      </div>
+      <div onclick="schedSetFilter('pend')"
+        style="font-size:11px;font-family:var(--cond);font-weight:700;padding:4px 10px;border-radius:12px;cursor:pointer;
+          background:${window._schedViewFilter==='pend'?'var(--red)':'var(--bg3)'};
+          color:${window._schedViewFilter==='pend'?'#fff':'var(--text3)'};
+          border:1px solid ${window._schedViewFilter==='pend'?'var(--red)':'var(--border)'}">
+        ΕΚΚΡΕΜΟΥΝ (${pendCount})
+      </div>
+    </div>` : ''}
+
     <!-- Detector list grouped by area -->
     <div id="sched-list">
       ${itemHtml}
@@ -4288,12 +4387,70 @@ function renderSchedule(mc) {
   `;
 }
 
-function exportSchedulePDF(m, y) {
+// ── Φίλτρο εμφάνισης στο πρόγραμμα (all / done / pend) ──
+function schedSetFilter(val) {
+  window._schedViewFilter = val;
+  renderSchedule(document.getElementById('main-content'));
+}
+
+// ── Modal επιλογής PDF (Όλοι / Ελεγχθέντες / Εκκρεμείς) ──
+function showSchedulePDFModal(m, y) {
+  const usedM = (m !== undefined) ? m : scheduleMonthYear.m;
+  const usedY = (y !== undefined) ? y : scheduleMonthYear.y;
+  const dets  = getDetectorsForSchedMonth(usedM, usedY);
+  const doneCount = dets.filter(d => detHasEntryInMonth(d, usedM, usedY)).length;
+  const pendCount = dets.length - doneCount;
+  const monthLabel = MONTH_NAMES_FULL[usedM] + ' ' + usedY;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay open';
+  overlay.id = 'sched-pdf-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box" style="max-width:340px;width:calc(100% - 32px);text-align:left">
+      <div class="modal-title" style="margin-bottom:4px">📄 ΕΞΑΓΩΓΗ PDF</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:16px">${monthLabel} · ${dets.length} ανιχνευτές</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+        <button onclick="document.getElementById('sched-pdf-overlay').remove();exportSchedulePDF(${usedM},${usedY},'all')"
+          style="background:var(--bg3);border:1px solid var(--accent);border-radius:var(--radius);color:var(--accent);padding:12px 14px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer;text-align:left;letter-spacing:0.3px">
+          📋 ΟΛΟΙ (${dets.length})
+          <span style="float:right;font-size:11px;font-weight:400;color:var(--text3)">Πλήρης αναφορά</span>
+        </button>
+        <button onclick="document.getElementById('sched-pdf-overlay').remove();exportSchedulePDF(${usedM},${usedY},'done')"
+          style="background:var(--bg3);border:1px solid var(--green);border-radius:var(--radius);color:var(--green2);padding:12px 14px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer;text-align:left;letter-spacing:0.3px">
+          ✓ ΕΛΕΓΧΘΗΚΑΝ (${doneCount})
+          <span style="float:right;font-size:11px;font-weight:400;color:var(--text3)">Μόνο ολοκληρωμένοι</span>
+        </button>
+        <button onclick="document.getElementById('sched-pdf-overlay').remove();exportSchedulePDF(${usedM},${usedY},'pend')"
+          style="background:var(--bg3);border:1px solid var(--red);border-radius:var(--radius);color:var(--red2);padding:12px 14px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer;text-align:left;letter-spacing:0.3px">
+          ⏳ ΕΚΚΡΕΜΟΥΝ (${pendCount})
+          <span style="float:right;font-size:11px;font-weight:400;color:var(--text3)">Μόνο εκκρεμείς</span>
+        </button>
+      </div>
+      <button class="modal-cancel" style="width:100%" onclick="document.getElementById('sched-pdf-overlay').remove()">Ακύρωση</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+}
+
+function exportSchedulePDF(m, y, pdfFilter) {
   const { m: cm, y: cy } = scheduleMonthYear;
   const usedM = (m !== undefined) ? m : cm;
   const usedY = (y !== undefined) ? y : cy;
-  const dets = getDetectorsForSchedMonth(usedM, usedY);
+  const allDets = getDetectorsForSchedMonth(usedM, usedY);
   const monthLabel = MONTH_NAMES_FULL[usedM] + ' ' + usedY;
+
+  const doneCount = allDets.filter(d => detHasEntryInMonth(d, usedM, usedY)).length;
+  const pendCount = allDets.length - doneCount;
+
+  // Φίλτρο PDF
+  const usedFilter = pdfFilter || 'all';
+  const dets = usedFilter === 'done' ? allDets.filter(d =>  detHasEntryInMonth(d, usedM, usedY))
+             : usedFilter === 'pend' ? allDets.filter(d => !detHasEntryInMonth(d, usedM, usedY))
+             : allDets;
+
+  const filterLabel = usedFilter === 'done' ? ' · ΕΛΕΓΧΘΗΚΑΝ ΜΟΝΟ'
+                    : usedFilter === 'pend' ? ' · ΕΚΚΡΕΜΟΥΝ ΜΟΝΟ' : '';
 
   const rows = dets.map((d, i) => {
     const done = detHasEntryInMonth(d, usedM, usedY);
@@ -4311,16 +4468,13 @@ function exportSchedulePDF(m, y) {
           ${done ? '✓ ΕΓΙΝΕ' : '⏳ ΕΚΚΡΕΜΕΙ'}
         </span>
       </td>
-      <td style="font-size:10px;color:#555">${lastEntry ? lastEntry.task : '—'}</td>
       <td style="font-size:10px;color:#555">${lastEntry ? lastEntry.tech : '—'}</td>
+      <td style="font-size:10px;color:#555">${lastEntry ? lastEntry.task : '—'}</td>
     </tr>`;
   }).join('');
 
-  const doneCount = dets.filter(d => detHasEntryInMonth(d, usedM, usedY)).length;
-  const pendCount = dets.length - doneCount;
-
   const html = `<!DOCTYPE html><html lang="el"><head><meta charset="UTF-8">
-<title>Πρόγραμμα ${monthLabel}</title>
+<title>Πρόγραμμα ${monthLabel}${filterLabel}</title>
 <style>
   body { font-family: Arial, sans-serif; margin:0; padding:14px; background:#fff; color:#222; font-size:12px; }
   .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px; border-bottom:2px solid #1a2535; padding-bottom:8px; }
@@ -4348,12 +4502,14 @@ function exportSchedulePDF(m, y) {
   <div class="title">
     ΜΗΝΙΑΙΟ ΠΡΟΓΡΑΜΜΑ ΕΛΕΓΧΩΝ<br>
     <span style="color:#e8620c">${monthLabel}</span>
+    ${filterLabel ? `<div style="font-size:10px;color:#888;margin-top:2px">${filterLabel.replace(' · ','')}</div>` : ''}
   </div>
 </div>
 <div class="summary">
-  <div class="sum-box"><div class="sum-val" style="color:#1a5fa8">${dets.length}</div><div class="sum-lbl">ΣΥΝΟΛΟ</div></div>
+  <div class="sum-box"><div class="sum-val" style="color:#1a5fa8">${allDets.length}</div><div class="sum-lbl">ΣΥΝΟΛΟ ΜΗΝΑ</div></div>
   <div class="sum-box"><div class="sum-val" style="color:#1e7a42">${doneCount}</div><div class="sum-lbl">ΕΓΙΝΑΝ</div></div>
   <div class="sum-box"><div class="sum-val" style="color:#c0251e">${pendCount}</div><div class="sum-lbl">ΕΚΚΡΕΜΟΥΝ</div></div>
+  ${usedFilter !== 'all' ? `<div class="sum-box" style="background:#fff3e0;border:1px solid #e8a030"><div class="sum-val" style="color:#b06000;font-size:16px">${dets.length}</div><div class="sum-lbl" style="color:#b06000">ΣΤΗ ΛΙΣΤΑ</div></div>` : ''}
 </div>
 <table>
   <thead>
@@ -4577,7 +4733,7 @@ function showAddCylinderModal(monthKey) {
   setTimeout(() => document.getElementById('cyl-no')?.focus(), 100);
 }
 
-function saveCylinder(monthKey) {
+async function saveCylinder(monthKey) {
   const cylNo   = document.getElementById('cyl-no').value.trim();
   const gas     = document.getElementById('cyl-gas').value.trim();
   if (!cylNo || !gas) { showToast('Συμπλήρωσε φιάλη και αέριο','error'); return; }
@@ -4593,9 +4749,10 @@ function saveCylinder(monthKey) {
   };
   CYLINDERS.push(cyl);
   saveCylinders();
-  gsSaveCylinder(cyl);
   document.getElementById('cyl-add-overlay').remove();
-  showToast('✓ Φιάλη ' + cyl.num + ' αποθηκεύτηκε');
+  showToast('💾 Αποθήκευση φιάλης...');
+  const ok = await gsSaveCylinder(cyl);
+  if (ok) showToast('✓ Φιάλη ' + cyl.num + ' αποθηκεύτηκε στο Sheet');
   renderCylinders(document.getElementById('main-content'));
 }
 
