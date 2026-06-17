@@ -1601,17 +1601,22 @@ async function syncFromSheets() {
 
     // Load cylinders — merge: Sheet κερδίζει για υπάρχοντα, τοπικά unsent προστίθενται
     const cylRes = await gsGet({ action: 'getCylinders' });
-    if (cylRes.cylinders && cylRes.cylinders.length > 0) {
-      // Κράτα τοπικές φιάλες που ΔΕΝ υπάρχουν στο Sheet (δεν πρόλαβαν να σταλούν)
-      const sheetIds = new Set(cylRes.cylinders.map(c => c.id));
-      const localOnly = CYLINDERS.filter(c => !sheetIds.has(c.id));
-      CYLINDERS.length = 0;
-      cylRes.cylinders.forEach(c => CYLINDERS.push(c));
-      // Πρόσθεσε τοπικές φιάλες που δεν στάλθηκαν ακόμα
-      localOnly.forEach(c => CYLINDERS.push(c));
-      saveCylinders();
-      // Στείλε τις unsent στο Sheet
-      localOnly.forEach(c => gsSaveCylinder(c));
+    if (cylRes.cylinders) {
+      if (cylRes.cylinders.length > 0) {
+        // Κράτα τοπικές φιάλες που ΔΕΝ υπάρχουν στο Sheet (δεν πρόλαβαν να σταλούν)
+        const sheetIds = new Set(cylRes.cylinders.map(c => c.id));
+        const localOnly = CYLINDERS.filter(c => !sheetIds.has(c.id));
+        CYLINDERS.length = 0;
+        cylRes.cylinders.forEach(c => CYLINDERS.push(c));
+        // Πρόσθεσε τοπικές φιάλες που δεν στάλθηκαν ακόμα
+        localOnly.forEach(c => CYLINDERS.push(c));
+        saveCylinders();
+        // Στείλε τις unsent στο Sheet
+        localOnly.forEach(c => gsSaveCylinder(c));
+      } else if (CYLINDERS.length > 0) {
+        // Sheet άδειο αλλά τοπικά υπάρχουν φιάλες → στείλε τις όλες
+        CYLINDERS.forEach(c => gsSaveCylinder(c));
+      }
     }
 
     gsConnected = true;
@@ -4181,12 +4186,18 @@ function schedApplyMonthPick() {
 }
 
 function getDetectorsForSchedMonth(m, y) {
-  // Επιστρέφει ανιχνευτές που έχουν nextCalDate σε αυτόν τον μήνα/έτος
+  // Επιστρέφει ανιχνευτές που:
+  // (α) έχουν nextCalDate σε αυτόν τον μήνα/έτος, ΚΑΙ/Ή
+  // (β) έχουν entry (ελέγχθηκαν) εντός αυτού του μήνα
+  // → Έτσι ανιχνευτές που ελέγχθηκαν νωρίτερα (άρα nextCalDate άλλαξε)
+  //   εξακολουθούν να εμφανίζονται ως ΕΛΕΓΧΘΗΚΑΝ τον μήνα που έγιναν.
   return DETECTORS.filter(d => {
+    // Έλεγξε αν έχει nextCalDate αυτόν τον μήνα
     const nd = getNextCalDate(d);
-    if (!nd) return false;
-    const dd = new Date(nd);
-    return dd.getFullYear() === y && dd.getMonth() === m;
+    const inNextCal = nd ? (() => { const dd = new Date(nd); return dd.getFullYear() === y && dd.getMonth() === m; })() : false;
+    // Έλεγξε αν ελέγχθηκε εντός αυτού του μήνα
+    const hasEntry = detHasEntryInMonth(d, m, y);
+    return inNextCal || hasEntry;
   });
 }
 
@@ -4835,7 +4846,8 @@ function deleteCylinder(id) {
   CYLINDERS = CYLINDERS.filter(c => c.id !== id);
   saveCylinders();
   gsDeleteCylinder(id);
-  document.getElementById('cyl-edit-overlay').remove();
+  const overlay = document.getElementById('cyl-edit-overlay');
+  if (overlay) overlay.remove();
   showToast('✓ Φιάλη διαγράφηκε');
   renderCylinders(document.getElementById('main-content'));
 }
