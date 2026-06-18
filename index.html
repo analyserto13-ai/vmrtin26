@@ -4848,7 +4848,7 @@ function isExpired(dateStr) {
 }
 
 function toggleCylStatus(id) {
-  const idx = CYLINDERS.findIndex(c => c.id === id);
+  const idx = CYLINDERS.findIndex(c => String(c.id) === String(id));
   if (idx < 0) return;
   const prev = CYLINDERS[idx].status || 'ΕΝΕΡΓΗ';
   CYLINDERS[idx].status = prev === 'ΑΔΕΙΑ' ? 'ΕΝΕΡΓΗ' : 'ΑΔΕΙΑ';
@@ -4942,8 +4942,8 @@ async function saveCylinder(monthKey) {
 }
 
 function editCylinder(id) {
-  const cyl = CYLINDERS.find(c => c.id === id);
-  if (!cyl) return;
+  const cyl = CYLINDERS.find(c => String(c.id) === String(id));
+  if (!cyl) { showToast('Η φιάλη δεν βρέθηκε','error'); return; }
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay open';
   overlay.id = 'cyl-edit-overlay';
@@ -5006,7 +5006,7 @@ function editCylinder(id) {
 }
 
 function updateCylinder(id) {
-  const idx = CYLINDERS.findIndex(c => c.id === id);
+  const idx = CYLINDERS.findIndex(c => String(c.id) === String(id));
   if (idx < 0) return;
   CYLINDERS[idx].cylNo   = document.getElementById('ecyl-no').value.trim();
   CYLINDERS[idx].company = document.getElementById('ecyl-company').value.trim();
@@ -5054,13 +5054,14 @@ function deleteCylinder(id) {
 }
 
 function _confirmDeleteCylinder(id) {
-  CYLINDERS = CYLINDERS.filter(c => c.id !== id);
+  const sid = String(id);
+  CYLINDERS = CYLINDERS.filter(c => String(c.id) !== sid);
   saveCylinders();
-  if (!DELETED_CYL_IDS.includes(id)) DELETED_CYL_IDS.push(id);
+  if (!DELETED_CYL_IDS.includes(sid)) DELETED_CYL_IDS.push(sid);
   saveDeletedCylIds();
-  gsDeleteCylinder(id).then(ok => {
+  gsDeleteCylinder(sid).then(ok => {
     if (ok) {
-      DELETED_CYL_IDS = DELETED_CYL_IDS.filter(x => x !== id);
+      DELETED_CYL_IDS = DELETED_CYL_IDS.filter(x => x !== sid);
       saveDeletedCylIds();
     } else if (gsConnected) {
       showToast('⚠ Η διαγραφή δεν επιβεβαιώθηκε στο Sheet — θα ξαναδοκιμαστεί', 'error');
