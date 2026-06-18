@@ -1415,8 +1415,18 @@ let DETECTORS = [];
 // monthKey = 'YYYY-MM'
 let CYLINDERS = JSON.parse(localStorage.getItem('vmrtin26_cylinders') || '[]');
 
+// Tombstones: IDs φιαλών που διαγράφηκαν τοπικά αλλά ίσως δεν έχουν ακόμα
+// επιβεβαιωθεί ως διαγραμμένα στο Sheet (π.χ. offline, ή race με sync).
+// Χωρίς αυτό, το syncFromSheets() βλέπει "τοπικά δεν υπάρχει στο Sheet" και
+// υποθέτει λάθος ότι είναι ΝΕΑ φιάλη που δεν στάλθηκε ακόμα → την ξαναστέλνει.
+let DELETED_CYL_IDS = JSON.parse(localStorage.getItem('vmrtin26_deleted_cyl_ids') || '[]');
+
 function saveCylinders() {
   localStorage.setItem('vmrtin26_cylinders', JSON.stringify(CYLINDERS));
+}
+
+function saveDeletedCylIds() {
+  localStorage.setItem('vmrtin26_deleted_cyl_ids', JSON.stringify(DELETED_CYL_IDS));
 }
 
 // ── Push μία φιάλη στο Sheet (upsert) ──
@@ -1433,11 +1443,13 @@ async function gsSaveCylinder(cyl) {
 
 // ── Διαγραφή φιάλης από Sheet ──
 async function gsDeleteCylinder(id) {
-  if (!gsConnected) return;
+  if (!gsConnected) return false;
   try {
     await gsPost({ action: 'deleteCylinder', data: { id } });
+    return true;
   } catch(err) {
     console.error('gsDeleteCylinder error:', err);
+    return false;
   }
 }
 
@@ -1735,15 +1747,96 @@ function getDaysUntil(dateStr) {
   return Math.round((new Date(dateStr) - new Date()) / 86400000);
 }
 
+// Μήνες σε 3-γράμματη αγγλική μορφή, όπως τους παράγει το JS Date.toString()
+// (π.χ. 'Wed Apr 19 2028...') — χρησιμοποιείται από parseDateParts().
+const MONTH3_TO_NUM = { Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12 };
+
+// Κοινός, timezone-safe parser ημερομηνίας. Επιστρέφει {day, month, year} (αριθμοί)
+// ή null αν δεν αναγνωρίζεται. Χρησιμοποιείται ΚΑΙ από formatDate() ΚΑΙ από
+// isExpired(), ώστε εμφάνιση και σύγκριση λήξης να συμφωνούν πάντα μεταξύ τους.
+// Καλύπτει: ISO yyyy-mm-dd, ήδη DD/MM/YYYY, πλήρες JS Date.toString() (η μορφή
+// που επιστρέφει το Google Sheets όταν μετατρέπει αυτόματα κείμενο σε ημερομηνία),
+// και γενικό fallback μέσω new Date() μόνο όταν δεν δηλώνεται ζώνη ώρας.
+function parseDateParts(dateStr) {
+  if (!dateStr) return null;
+  const s = String(dateStr).trim();
+
+  // (1) ISO yyyy-mm-dd (με ή χωρίς ώρα/Z)
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return { year: +m[1], month: +m[2], day: +m[3] };
+
+  // (2) Ήδη DD/MM/YYYY ή D/M/YYYY
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) return { year: +m[3], month: +m[2], day: +m[1] };
+
+  // (3) Πλήρες JS Date.toString(), π.χ. 'Wed Apr 19 2028 00:00:00 GMT+0300 (...)'.
+  //     Διαβάζουμε μήνα/μέρα/έτος απευθείας από το αναγνώσιμο μέρος, αγνοώντας
+  //     ώρα/ζώνη — καμία πιθανότητα ολίσθησης ημέρας.
+  m = s.match(/^\w{3}\s+(\w{3})\s+(\d{1,2})\s+(\d{4})/);
+  if (m && MONTH3_TO_NUM[m[1]]) {
+    return { year: +m[3], month: MONTH3_TO_NUM[m[1]], day: +m[2] };
+  }
+
+  // (4) Γενικό fallback: new Date() ΜΟΝΟ όταν δεν υπάρχει δηλωμένη ζώνη ώρας
+  //     στο string (οπότε δεν τίθεται θέμα shift).
+  if (!/GMT|UTC|[+-]\d{2}:?\d{2}/.test(s)) {
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) {
+      return { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate() };
+    }
+  }
+
+  return null; // μη αναγνωρίσιμο/ασαφές (π.χ. 'Sep 2027', 'F5F5')
+}
+
 function formatDate(dateStr) {
   if (!dateStr) return '—';
-  // Παίρνουμε απευθείας από το string yyyy-mm-dd για να αποφύγουμε timezone offset
-  const parts = String(dateStr).split('T')[0].split('-');
-  if (parts.length === 3) return parts[2] + '/' + parts[1] + '/' + parts[0];
-  const d = new Date(dateStr);
-  const dd = String(d.getDate()).padStart(2,'0');
-  const mm = String(d.getMonth()+1).padStart(2,'0');
-  return dd + '/' + mm + '/' + d.getFullYear();
+  const parts = parseDateParts(dateStr);
+  if (!parts) return String(dateStr).trim(); // εμφάνισέ το ως έχει, μην το σπάσεις σε NaN
+  return String(parts.day).padStart(2,'0') + '/' + String(parts.month).padStart(2,'0') + '/' + parts.year;
+}
+
+// ── DD/MM/YYYY date-mask input widget ──
+// Αντικαθιστά native <input type="date"> (που εμφανίζεται με τη μορφή locale του
+// browser/OS — π.χ. MM/DD/YYYY — ανεξάρτητα από τον κώδικά μας) με ένα ζευγάρι:
+//  • ορατό <input type="text"> πάντα σε DD/MM/YYYY, με αυτόματο "/" ενώ πληκτρολογείς
+//  • κρυφό <input type="date"> που κρατά την πραγματική τιμή σε ISO yyyy-mm-dd και
+//    συνεχίζει να καλεί το ΙΔΙΟ onchange handler που θα καλούσε το native input,
+//    ώστε caller-side κώδικας (π.χ. setDetNextDate) να μη χρειάζεται καμία αλλαγή.
+// Κλικ στο ορατό text input ανοίγει το native ημερολόγιο του κρυφού date input.
+function dateMaskInputHTML(id, isoValue, onchangeJs, extraStyle) {
+  const display = isoValue ? formatDate(isoValue) : '';
+  const safeDisplay = display === '—' ? '' : display;
+  return `<input type="text" inputmode="numeric" id="${id}" class="date-mask-input"
+      placeholder="ΗΗ/ΜΜ/ΕΕΕΕ" maxlength="10" value="${safeDisplay}"
+      style="${extraStyle||''}"
+      oninput="_dateMaskOnInput(this)"
+      onclick="document.getElementById('${id}__hidden').showPicker ? document.getElementById('${id}__hidden').showPicker() : document.getElementById('${id}__hidden').focus()">
+    <input type="date" id="${id}__hidden" value="${isoValue||''}" style="display:none"
+      onchange="document.getElementById('${id}').value = this.value ? formatDate(this.value) : ''; (${onchangeJs})(this.value)">`;
+}
+
+// Καθαρίζει/μορφοποιεί το text input ενώ ο χρήστης πληκτρολογεί, προσθέτοντας
+// αυτόματα "/" στις σωστές θέσεις, και ενημερώνει το ζευγαρωμένο κρυφό date input
+// (άρα και τον caller's onchange) μόνο όταν η ημερομηνία είναι πλήρης και έγκυρη.
+function _dateMaskOnInput(el) {
+  let digits = el.value.replace(/\D/g,'').slice(0,8);
+  let out = digits;
+  if (digits.length > 4) out = digits.slice(0,2) + '/' + digits.slice(2,4) + '/' + digits.slice(4);
+  else if (digits.length > 2) out = digits.slice(0,2) + '/' + digits.slice(2);
+  el.value = out;
+
+  if (digits.length === 8) {
+    const day = +digits.slice(0,2), month = +digits.slice(2,4), year = +digits.slice(4,8);
+    const d = new Date(year, month - 1, day);
+    const valid = d.getFullYear() === year && d.getMonth() === month - 1 && d.getDate() === day;
+    const hidden = document.getElementById(el.id + '__hidden');
+    if (valid && hidden) {
+      const iso = year + '-' + String(month).padStart(2,'0') + '-' + String(day).padStart(2,'0');
+      hidden.value = iso;
+      hidden.dispatchEvent(new Event('change'));
+    }
+  }
 }
 
 // ══════════════════════════════════════════
@@ -2504,7 +2597,7 @@ function renderDashboard(mc) {
       <div class="card-title">ΤΕΛΕΥΤΑΙΕΣ ΕΓΓΡΑΦΕΣ</div>
       ${recent.length ? recent.map(e => `
         <div class="history-entry" onclick="openDetector('${e.tag}')" style="cursor:pointer">
-          <div class="hist-date">${e.date}</div>
+          <div class="hist-date">${formatDate(e.date)}</div>
           <div class="hist-task">${e.task} <span style="font-family:var(--mono);font-size:12px;color:var(--accent)">${e.tag}</span></div>
           <div class="hist-tech">${e.tech}</div>
         </div>
@@ -2604,7 +2697,15 @@ function renderDetectorDetail(mc) {
       ${d.location ? `<div style="font-size:13px;color:var(--text2);margin:4px 0;font-family:var(--mono)">${d.location}</div>` : ''}
       `}
       <div class="detail-meta">
-        <span class="meta-badge ${d.type==='GAS'?'meta-gas':'meta-fire'}">${d.type}</span>
+        ${ROLES[currentUser.role].canAdmin ? `
+        <span class="meta-badge ${d.type==='GAS'?'meta-gas':'meta-fire'}" style="cursor:pointer;position:relative" title="Κλικ για αλλαγή τύπου" onclick="toggleTypePicker('${d.tag}',this)">
+          ${d.type} ▾
+          <select id="type-picker" style="display:none;position:absolute;top:100%;left:0;z-index:999;background:var(--bg3);color:var(--text1);border:1px solid var(--border);border-radius:6px;padding:4px;font-size:12px;min-width:90px"
+            onchange="setDetType('${d.tag}',this.value)" onclick="event.stopPropagation()">
+            <option value="GAS"  ${d.type==='GAS' ?'selected':''}>GAS</option>
+            <option value="FIRE" ${d.type==='FIRE'?'selected':''}>FIRE</option>
+          </select>
+        </span>` : `<span class="meta-badge ${d.type==='GAS'?'meta-gas':'meta-fire'}">${d.type}</span>`}
         ${ROLES[currentUser.role].canAdmin ? `
         <span class="meta-badge meta-area" style="cursor:pointer;position:relative" title="Κλικ για αλλαγή περιοχής" onclick="toggleAreaPicker('${d.tag}',this)">
           📍 ${d.area} ▾
@@ -2613,7 +2714,15 @@ function renderDetectorDetail(mc) {
             ${DET_AREAS.map(a => `<option value="${a}" ${d.area===a?'selected':''}>${a}</option>`).join('')}
           </select>
         </span>` : `<span class="meta-badge meta-area">${d.area}</span>`}
-        <span class="meta-badge meta-area">${d.category || ''}</span>
+        ${ROLES[currentUser.role].canAdmin ? `
+        <span class="meta-badge meta-area" style="cursor:pointer;position:relative" title="Κλικ για αλλαγή κατηγορίας" onclick="toggleCategoryPicker('${d.tag}',this)">
+          ${d.category || '— χωρίς κατηγορία —'} ▾
+          <select id="category-picker" style="display:none;position:absolute;top:100%;left:0;z-index:999;background:var(--bg3);color:var(--text1);border:1px solid var(--border);border-radius:6px;padding:4px;font-size:12px;min-width:160px"
+            onchange="if(this.value==='__new__'){addListItem('category','${d.tag}');this.value='${(d.category||'').replace(/'/g,"\\'")}';}else{setDetCategory('${d.tag}',this.value)}" onclick="event.stopPropagation()">
+            ${DET_CATEGORIES.map(c => `<option value="${c}" ${d.category===c?'selected':''}>${c}</option>`).join('')}
+            <option value="__new__">➕ Νέο/Άλλο…</option>
+          </select>
+        </span>` : `<span class="meta-badge meta-area">${d.category || ''}</span>`}
       </div>
       <div style="margin-top:12px;padding:10px 12px;background:var(--bg3);border-radius:var(--radius);border-left:3px solid ${alertColor}">
         <div style="font-size:12px;color:${alertColor};font-family:var(--cond);font-weight:600">${alertText}</div>
@@ -2633,8 +2742,7 @@ function renderDetectorDetail(mc) {
           <option value="12" ${interval===12?'selected':''}>12 μήνες</option>
         </select>
         <span style="font-size:12px;color:var(--text3)">Επόμενος:</span>
-        <input type="date" class="form-input" style="width:140px;padding:4px 8px;font-size:12px"
-          value="${nextDate||''}" onchange="setDetNextDate('${d.tag}',this.value)">
+        ${dateMaskInputHTML('det-nextdate-'+d.tag.replace(/[^a-zA-Z0-9]/g,''), nextDate, "v => setDetNextDate('"+d.tag+"', v)", 'width:90px;padding:4px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text1);font-family:var(--mono)')}
       </div>` : ''}
     </div>
     ${ROLES[currentUser.role].canAdd ? `
@@ -2652,7 +2760,7 @@ function renderDetectorDetail(mc) {
     <div class="card-title" style="margin-bottom:10px">${t('history')}</div>
     ${d.entries.length ? d.entries.slice().reverse().map(e => `
       <div class="history-entry">
-        <div class="hist-date">📅 ${e.date}</div>
+        <div class="hist-date">📅 ${formatDate(e.date)}</div>
         <div class="hist-task">🔧 ${e.task}</div>
         <div class="hist-tech">👤 ${e.tech} ${e.cylinder ? `<span class="hist-cylinder">${e.cylinder}</span>` : ''}</div>
         ${e.notes ? `<div class="hist-tech" style="margin-top:4px;font-style:italic">💬 ${e.notes}</div>` : ''}
@@ -2703,6 +2811,62 @@ function setDetArea(tag, val) {
   det.area = val;
   gsUpdateDetector({ tag, area: val });
   showToast('✓ Περιοχή → ' + val);
+  renderDetectorDetail(document.getElementById('main-content'));
+}
+
+function toggleTypePicker(tag, spanEl) {
+  const sel = spanEl.querySelector('#type-picker');
+  if (!sel) return;
+  if (sel.style.display === 'none') {
+    sel.style.display = 'block';
+    sel.focus();
+    setTimeout(() => {
+      document.addEventListener('click', function closer() {
+        sel.style.display = 'none';
+        document.removeEventListener('click', closer);
+      }, { once: true });
+    }, 0);
+  } else {
+    sel.style.display = 'none';
+  }
+}
+
+function setDetType(tag, val) {
+  const det = DETECTORS.find(d => d.tag === tag);
+  if (!det || det.type === val) return;
+  det.type = val;
+  gsUpdateDetector({ tag, type: val });
+  showToast('✓ Τύπος → ' + val);
+  renderDetectorDetail(document.getElementById('main-content'));
+}
+
+function toggleCategoryPicker(tag, spanEl) {
+  const sel = spanEl.querySelector('#category-picker');
+  if (!sel) return;
+  if (sel.style.display === 'none') {
+    sel.style.display = 'block';
+    sel.focus();
+    setTimeout(() => {
+      document.addEventListener('click', function closer() {
+        sel.style.display = 'none';
+        document.removeEventListener('click', closer);
+      }, { once: true });
+    }, 0);
+  } else {
+    sel.style.display = 'none';
+  }
+}
+
+function setDetCategory(tag, val) {
+  const det = DETECTORS.find(d => d.tag === tag);
+  if (!det || det.category === val) return;
+  det.category = val;
+  // Σημείωση: αν ο ανιχνευτής ΔΕΝ έχει χειροκίνητο det.calInterval, το interval
+  // βαθμονόμησης θα αλλάξει αυτόματα στην επόμενη ανάγνωση (getIntervalMonths()
+  // διαβάζει CAL_INTERVALS[category]). Αν έχει ήδη χειροκίνητο calInterval, αυτό
+  // παραμένει ως override — όπως ακριβώς συμβαίνει και με την Interval επιλογή.
+  gsUpdateDetector({ tag, category: val });
+  showToast('✓ Κατηγορία → ' + val);
   renderDetectorDetail(document.getElementById('main-content'));
 }
 
@@ -2844,7 +3008,7 @@ function renderAdd(mc) {
     </div>
     <div class="form-group">
       <label class="form-label">${t('form-date')}</label>
-      <input type="date" class="form-input" id="add-date" value="${today}">
+      ${dateMaskInputHTML('add-date', today, "v => {}", 'width:100%;padding:8px;font-size:14px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);font-family:var(--mono);box-sizing:border-box')}
     </div>
     <div class="form-group">
       <label class="form-label">${t('form-task')}</label>
@@ -2885,7 +3049,7 @@ function toggleTask(opt) {
 
 function submitEntry() {
   const tag = document.getElementById('add-tag').value.trim();
-  const date = document.getElementById('add-date').value;
+  const date = document.getElementById('add-date__hidden').value;
   const cyl = document.getElementById('add-cyl').value.trim();
   const tech = document.getElementById('add-tech').value.trim();
   const notes = document.getElementById('add-notes').value.trim();
@@ -2914,14 +3078,14 @@ function submitEntry() {
     calInterval: getIntervalMonths(det),
   });
 
-  // Auto-update next cal date if Βαθμονόμηση
-  if (taskStr.includes('Βαθμονόμηση')) {
-    const interval = getIntervalMonths(det);
-    const nextDate = new Date(date);
-    nextDate.setMonth(nextDate.getMonth() + interval);
-    det.nextCalDate = nextDate.toISOString().split('T')[0];
-    gsUpdateDetector({ tag, nextCalDate: det.nextCalDate });
-  }
+  // Auto-update next cal date για ΚΑΘΕ τύπο εργασίας συντήρησης
+  // (Βαθμονόμηση, Αλλαγή αισθητήρα, Αλλαγή κάρτας, Αλλαγή καλωδίου, Άλλο)
+  // — κάθε επέμβαση μηδενίζει το ρολόι μέχρι τον επόμενο προγραμματισμένο έλεγχο.
+  const interval = getIntervalMonths(det);
+  const nextDate = new Date(date);
+  nextDate.setMonth(nextDate.getMonth() + interval);
+  det.nextCalDate = nextDate.toISOString().split('T')[0];
+  gsUpdateDetector({ tag, nextCalDate: det.nextCalDate });
 
   selectedTasks = [];
   selectedDetector = det;
@@ -3258,13 +3422,16 @@ function updateInterval(cat, val) {
 }
 
 // Προσθήκη νέας τιμής σε λίστα (Τύπος / Περιοχή / Κατηγορία)
-function addListItem(listType) {
+// applyToTag (προαιρετικό): αν δοθεί, η νέα τιμή εφαρμόζεται αυτόματα
+// σε αυτόν τον ανιχνευτή μετά την προσθήκη (π.χ. όταν προστίθεται από το dropdown της κάρτας).
+function addListItem(listType, applyToTag) {
   const labels = { type: 'Τύπος ανιχνευτή', area: 'Περιοχή', category: 'Κατηγορία' };
   const placeholders = { type: 'π.χ. OXYGEN DETECTOR', area: 'π.χ. ΛΙΜΑΝΙ', category: 'π.χ. ΟΞΥΓΟΝΟ' };
 
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay open';
   overlay.id = 'addlist-overlay';
+  overlay.dataset.applyToTag = applyToTag || '';
   overlay.innerHTML = `
     <div class="modal-box" style="text-align:left">
       <div class="modal-title" style="margin-bottom:12px">➕ Νέο: ${labels[listType]}</div>
@@ -3292,6 +3459,7 @@ function addListItem(listType) {
 function confirmAddListItem(listType) {
   const val = document.getElementById('addlist-val')?.value.trim().toUpperCase();
   if (!val) { showToast('Συμπλήρωσε τιμή','error'); return; }
+  const applyToTag = document.getElementById('addlist-overlay')?.dataset.applyToTag || '';
 
   if (listType === 'type') {
     if (!DET_TYPES.includes(val)) { DET_TYPES.push(val); saveLists(); }
@@ -3306,6 +3474,14 @@ function confirmAddListItem(listType) {
 
   document.getElementById('addlist-overlay').remove();
   showToast(`✓ Προστέθηκε: ${val}`);
+
+  // Αν προστέθηκε από το dropdown συγκεκριμένου ανιχνευτή, εφαρμόζεται κατευθείαν εκεί
+  if (applyToTag) {
+    if (listType === 'category') setDetCategory(applyToTag, val);
+    else if (listType === 'type') setDetType(applyToTag, val);
+    else if (listType === 'area') setDetArea(applyToTag, val);
+    return; // οι παρακάτω refresh δεν χρειάζονται, το set* ήδη κάνει re-render
+  }
 
   // Refresh new detector modal if open
   const ndOverlay = document.getElementById('newdet-overlay');
@@ -3429,7 +3605,7 @@ function showNewDetectorModal() {
       </select>
 
       <label class="field-label">ΕΠΟΜΕΝΗ ΒΑΘΜΟΝΟΜΗΣΗ</label>
-      <input type="date" class="field-input" id="nd-nextcal" style="margin-bottom:16px">
+      <div style="margin-bottom:16px">${dateMaskInputHTML('nd-nextcal', '', "v => {}", 'width:100%;padding:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);font-family:var(--mono);font-size:14px;box-sizing:border-box')}</div>
 
       <div id="nd-error" style="color:var(--red2);font-size:13px;margin-bottom:10px;display:none"></div>
       <div style="display:flex;gap:8px">
@@ -3455,7 +3631,7 @@ function submitNewDetector() {
   const area     = document.getElementById('nd-area').value;
   const cat      = document.getElementById('nd-cat').value;
   const interval = document.getElementById('nd-interval').value;
-  const nextCal  = document.getElementById('nd-nextcal').value;
+  const nextCal  = document.getElementById('nd-nextcal__hidden').value;
   const errEl    = document.getElementById('nd-error');
 
   if (!tag) { errEl.textContent='Το TAG είναι υποχρεωτικό'; errEl.style.display='block'; return; }
@@ -3700,7 +3876,7 @@ function exportMonthlyPDF(entries, monthLabel, month, year) {
         <tr>
           <td class="tag">${e.tag}</td>
           <td>${e.description || '—'}</td>
-          <td style="font-family:monospace">${e.date}</td>
+          <td style="font-family:monospace">${formatDate(e.date)}</td>
           <td>${e.task}</td>
           <td>${e.tech}</td>
           <td class="sign-cell"></td>
@@ -4628,7 +4804,7 @@ function renderCylinders(mc) {
                 <div style="font-size:10px;color:var(--text3)">${c.company||''}</div>
               </td>
               <td style="padding:8px;font-size:11px;color:var(--text2)">${c.gas}</td>
-              <td style="padding:8px;text-align:center;font-size:10px;color:${isExpired(c.expDate)?'var(--red2)':'var(--text3)'};font-family:var(--mono)">${c.expDate||'—'}</td>
+              <td style="padding:8px;text-align:center;font-size:10px;color:${isExpired(c.expDate)?'var(--red2)':'var(--text3)'};font-family:var(--mono)">${formatDate(c.expDate)}</td>
               <td style="padding:6px 4px;text-align:center">
                 <button onclick="toggleCylStatus('${c.id}')"
                   title="Εναλλαγή κατάστασης"
@@ -4661,16 +4837,14 @@ function renderCylinders(mc) {
 }
 
 function isExpired(dateStr) {
-  if (!dateStr) return false;
-  // Προσπάθησε να αναγνωρίσεις διάφορες μορφές
-  const parts = dateStr.replace(/\//g,'-').split('-');
-  if (parts.length < 2) return false;
-  try {
-    let d;
-    if (parts[0].length === 4) d = new Date(dateStr); // YYYY-MM-DD
-    else d = new Date(parts[2]+'-'+parts[1].padStart(2,'0')+'-'+(parts[0]||'01').padStart(2,'0'));
-    return d < new Date();
-  } catch(e) { return false; }
+  const parts = parseDateParts(dateStr);
+  if (!parts) return false;
+  // new Date(year, monthIndex, day) στο LOCAL timezone — συνεπές με "new Date()"
+  // χωρίς ώρα/ζώνη οπουδήποτε αλλού στην εφαρμογή, άρα καμία ολίσθηση εδώ.
+  const d = new Date(parts.year, parts.month - 1, parts.day);
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  return d < today;
 }
 
 function toggleCylStatus(id) {
@@ -4794,7 +4968,7 @@ function editCylinder(id) {
         </div>
         <div>
           <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--cond);font-weight:700">ΗΜ. ΛΗΞΗΣ</div>
-          <input id="ecyl-exp" type="text" value="${cyl.expDate}"
+          <input id="ecyl-exp" type="text" value="${formatDate(cyl.expDate) === '—' ? '' : formatDate(cyl.expDate)}"
             style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);padding:8px;font-family:var(--mono);font-size:13px;box-sizing:border-box">
         </div>
         <div>
@@ -4845,7 +5019,21 @@ function deleteCylinder(id) {
   if (!confirm('Διαγραφή φιάλης;')) return;
   CYLINDERS = CYLINDERS.filter(c => c.id !== id);
   saveCylinders();
-  gsDeleteCylinder(id);
+  // Σήμανση ως tombstone ΠΡΙΝ την κλήση στο Sheet, ώστε ένα ταυτόχρονο
+  // syncFromSheets() να μην ξαναφέρει τη φιάλη ενώ περιμένουμε απάντηση.
+  if (!DELETED_CYL_IDS.includes(id)) DELETED_CYL_IDS.push(id);
+  saveDeletedCylIds();
+  gsDeleteCylinder(id).then(ok => {
+    if (ok) {
+      // Επιβεβαιώθηκε στο Sheet → δεν χρειάζεται πλέον tombstone
+      DELETED_CYL_IDS = DELETED_CYL_IDS.filter(x => x !== id);
+      saveDeletedCylIds();
+    } else if (gsConnected) {
+      showToast('⚠ Η διαγραφή δεν επιβεβαιώθηκε στο Sheet — θα ξαναδοκιμαστεί', 'error');
+    }
+    // Αν gsConnected===false (offline), δεν δείχνουμε σφάλμα — το tombstone
+    // ήδη προστατεύει τη φιάλη μέχρι να ξανασυνδεθεί και να σταλεί η διαγραφή.
+  });
   const overlay = document.getElementById('cyl-edit-overlay');
   if (overlay) overlay.remove();
   showToast('✓ Φιάλη διαγράφηκε');
@@ -4897,7 +5085,7 @@ function exportCylindersPDF(monthKey) {
       <td style="font-family:monospace;font-size:11px">${c.cylNo}</td>
       <td style="font-size:11px">${c.company||'—'}</td>
       <td style="font-size:11px">${c.gas}</td>
-      <td style="font-size:11px;text-align:center;color:${isExpired(c.expDate)?'#cc2222':'#333'}">${c.expDate||'—'}</td>
+      <td style="font-size:11px;text-align:center;color:${isExpired(c.expDate)?'#cc2222':'#333'}">${formatDate(c.expDate)}</td>
       <td style="text-align:center">
         <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;
           background:${c.status==='ΑΔΕΙΑ'?'#fde8e8':'#e8fde8'};
