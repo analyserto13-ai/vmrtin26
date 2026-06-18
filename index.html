@@ -1615,19 +1615,36 @@ async function syncFromSheets() {
     const cylRes = await gsGet({ action: 'getCylinders' });
     if (cylRes.cylinders) {
       if (cylRes.cylinders.length > 0) {
-        // Κράτα τοπικές φιάλες που ΔΕΝ υπάρχουν στο Sheet (δεν πρόλαβαν να σταλούν)
-        const sheetIds = new Set(cylRes.cylinders.map(c => c.id));
-        const localOnly = CYLINDERS.filter(c => !sheetIds.has(c.id));
+        // String coercion παντού για να αποφύγουμε number vs string mismatch
+        const sheetIds = new Set(cylRes.cylinders.map(c => String(c.id)));
+        // localOnly: τοπικές που δεν υπάρχουν στο Sheet ΚΑΙ δεν έχουν διαγραφεί σκόπιμα
+        const localOnly = CYLINDERS.filter(c =>
+          !sheetIds.has(String(c.id)) && !DELETED_CYL_IDS.includes(String(c.id))
+        );
         CYLINDERS.length = 0;
-        cylRes.cylinders.forEach(c => CYLINDERS.push(c));
-        // Πρόσθεσε τοπικές φιάλες που δεν στάλθηκαν ακόμα
+        // Από το Sheet: σκιπάρε όσες έχουν σημανθεί ως διαγραμμένες τοπικά
+        cylRes.cylinders
+          .filter(c => !DELETED_CYL_IDS.includes(String(c.id)))
+          .forEach(c => CYLINDERS.push(c));
+        // Πρόσθεσε τοπικές που δεν στάλθηκαν ακόμα
         localOnly.forEach(c => CYLINDERS.push(c));
         saveCylinders();
         // Στείλε τις unsent στο Sheet
         localOnly.forEach(c => gsSaveCylinder(c));
+        // Ξαναστείλε delete για όσες tombstone δεν έχουν ακόμα σβηστεί από το Sheet
+        DELETED_CYL_IDS
+          .filter(tid => sheetIds.has(tid))
+          .forEach(tid => gsDeleteCylinder(tid).then(ok => {
+            if (ok) {
+              DELETED_CYL_IDS = DELETED_CYL_IDS.filter(x => x !== tid);
+              saveDeletedCylIds();
+            }
+          }));
       } else if (CYLINDERS.length > 0) {
-        // Sheet άδειο αλλά τοπικά υπάρχουν φιάλες → στείλε τις όλες
-        CYLINDERS.forEach(c => gsSaveCylinder(c));
+        // Sheet άδειο αλλά τοπικά υπάρχουν φιάλες → στείλε μόνο τις μη-διαγραμμένες
+        CYLINDERS
+          .filter(c => !DELETED_CYL_IDS.includes(String(c.id)))
+          .forEach(c => gsSaveCylinder(c));
       }
     }
 
