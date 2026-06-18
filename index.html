@@ -5016,23 +5016,45 @@ function updateCylinder(id) {
 }
 
 function deleteCylinder(id) {
-  if (!confirm('Διαγραφή φιάλης;')) return;
+  // Το native confirm() είναι blocked σε mobile/PWA browsers — χρησιμοποιούμε
+  // inline confirmation μέσα στο ίδιο modal αντί γι' αυτό.
+  const overlay = document.getElementById('cyl-edit-overlay');
+  if (overlay) {
+    const box = overlay.querySelector('.modal-box');
+    if (box) {
+      box.innerHTML = `
+        <div class="modal-title" style="color:var(--red2)">🗑 ΔΙΑΓΡΑΦΗ ΦΙΑΛΗΣ</div>
+        <p style="color:var(--text2);font-size:14px;margin:12px 0 20px">Είσαι σίγουρος; Η ενέργεια είναι μη αναστρέψιμη.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <button onclick="document.getElementById('cyl-edit-overlay').remove()"
+            style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text2);padding:10px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer">
+            ΑΚΥΡΩΣΗ
+          </button>
+          <button onclick="_confirmDeleteCylinder('${id}')"
+            style="background:var(--red2);border:none;border-radius:var(--radius);color:#fff;padding:10px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer">
+            ΝΑΙ, ΔΙΑΓΡΑΦΗ
+          </button>
+        </div>
+      `;
+      return;
+    }
+  }
+  // Fallback αν το modal δεν είναι ανοιχτό (π.χ. κλήση από άλλο σημείο)
+  _confirmDeleteCylinder(id);
+}
+
+function _confirmDeleteCylinder(id) {
   CYLINDERS = CYLINDERS.filter(c => c.id !== id);
   saveCylinders();
-  // Σήμανση ως tombstone ΠΡΙΝ την κλήση στο Sheet, ώστε ένα ταυτόχρονο
-  // syncFromSheets() να μην ξαναφέρει τη φιάλη ενώ περιμένουμε απάντηση.
   if (!DELETED_CYL_IDS.includes(id)) DELETED_CYL_IDS.push(id);
   saveDeletedCylIds();
   gsDeleteCylinder(id).then(ok => {
     if (ok) {
-      // Επιβεβαιώθηκε στο Sheet → δεν χρειάζεται πλέον tombstone
       DELETED_CYL_IDS = DELETED_CYL_IDS.filter(x => x !== id);
       saveDeletedCylIds();
     } else if (gsConnected) {
       showToast('⚠ Η διαγραφή δεν επιβεβαιώθηκε στο Sheet — θα ξαναδοκιμαστεί', 'error');
     }
-    // Αν gsConnected===false (offline), δεν δείχνουμε σφάλμα — το tombstone
-    // ήδη προστατεύει τη φιάλη μέχρι να ξανασυνδεθεί και να σταλεί η διαγραφή.
   });
   const overlay = document.getElementById('cyl-edit-overlay');
   if (overlay) overlay.remove();
