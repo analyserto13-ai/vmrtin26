@@ -4832,11 +4832,16 @@ function renderCylinders(mc) {
                   ${c.status||'ΕΝΕΡΓΗ'}
                 </button>
               </td>
-              <td style="padding:6px 4px;text-align:center">
+              <td style="padding:6px 4px;text-align:center;white-space:nowrap">
                 <button onclick="editCylinder('${c.id}')"
                   title="Επεξεργασία"
                   style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text3);width:28px;height:28px;cursor:pointer;font-size:13px;display:inline-flex;align-items:center;justify-content:center">
                   ✏️
+                </button>
+                <button onclick="_confirmDeleteCylinder('${c.id}')"
+                  title="Διαγραφή"
+                  style="background:rgba(200,0,0,0.08);border:1px solid #cc2222;border-radius:var(--radius);color:#cc2222;width:28px;height:28px;cursor:pointer;font-size:13px;display:inline-flex;align-items:center;justify-content:center;margin-left:4px">
+                  🗑
                 </button>
               </td>
             </tr>`).join('')}
