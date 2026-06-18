@@ -5002,14 +5002,10 @@ function editCylinder(id) {
           </select>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <button id="ecyl-cancel"
           style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text2);padding:10px;font-family:var(--cond);font-weight:700;font-size:12px;cursor:pointer">
           ΑΚΥΡΩΣΗ
-        </button>
-        <button id="ecyl-delete"
-          style="background:var(--bg3);border:1px solid #cc2222;border-radius:var(--radius);color:#cc2222;padding:10px;font-family:var(--cond);font-weight:700;font-size:12px;cursor:pointer">
-          🗑 ΔΙΑΓΡΑΦΗ
         </button>
         <button id="ecyl-save"
           style="background:var(--accent);border:none;border-radius:var(--radius);color:#fff;padding:10px;font-family:var(--cond);font-weight:700;font-size:12px;cursor:pointer">
@@ -5019,10 +5015,7 @@ function editCylinder(id) {
     </div>
   `;
   document.body.appendChild(overlay);
-  // Listeners μέσω JS — όχι onclick attributes — για να αποφύγουμε
-  // οποιοδήποτε quoting/scoping πρόβλημα με το id της φιάλης.
   document.getElementById('ecyl-cancel').addEventListener('click', () => overlay.remove());
-  document.getElementById('ecyl-delete').addEventListener('click', () => deleteCylinder(id));
   document.getElementById('ecyl-save').addEventListener('click', () => updateCylinder(id));
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 }
@@ -5040,39 +5033,6 @@ function updateCylinder(id) {
   document.getElementById('cyl-edit-overlay').remove();
   showToast('✓ Φιάλη ενημερώθηκε');
   renderCylinders(document.getElementById('main-content'));
-}
-
-function deleteCylinder(id) {
-  const overlay = document.getElementById('cyl-edit-overlay');
-  if (!overlay) return;
-  // Αποθηκεύουμε το id στο dataset του overlay — έτσι αποφεύγουμε
-  // το interpolation μέσα σε onclick strings που μπορεί να σπάσει.
-  overlay.dataset.pendingDeleteId = id;
-  const box = overlay.querySelector('.modal-box');
-  if (!box) return;
-  box.innerHTML = `
-    <div class="modal-title" style="color:var(--red2);margin-bottom:12px">🗑 ΔΙΑΓΡΑΦΗ ΦΙΑΛΗΣ</div>
-    <p style="color:var(--text2);font-size:14px;margin:0 0 20px">Είσαι σίγουρος;<br>Η ενέργεια είναι μη αναστρέψιμη.</p>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <button id="cyl-del-cancel"
-        style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text2);padding:10px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer">
-        ΑΚΥΡΩΣΗ
-      </button>
-      <button id="cyl-del-confirm"
-        style="background:#cc2222;border:none;border-radius:var(--radius);color:#fff;padding:10px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer">
-        ΝΑΙ, ΔΙΑΓΡΑΦΗ
-      </button>
-    </div>
-  `;
-  // Attach listeners μέσω JS — όχι onclick attributes — για να αποφύγουμε
-  // οποιοδήποτε quoting/scoping πρόβλημα.
-  document.getElementById('cyl-del-cancel').addEventListener('click', () => {
-    document.getElementById('cyl-edit-overlay')?.remove();
-  });
-  document.getElementById('cyl-del-confirm').addEventListener('click', () => {
-    const pendingId = document.getElementById('cyl-edit-overlay')?.dataset.pendingDeleteId;
-    if (pendingId) _confirmDeleteCylinder(pendingId);
-  });
 }
 
 function _confirmDeleteCylinder(id) {
