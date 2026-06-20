@@ -6,7 +6,7 @@
 <title>VMRTIN26 — Motor Oil Refineries</title>
 <meta name="version" content="1.0.0">
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#1a2535">
+<meta name="theme-color" content="#15181D">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="VMRTIN26">
@@ -14,43 +14,57 @@
 
 <meta name="deploy" content="github-pages">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27><text y=%27.9em%27 font-size=%2790%27>🔥</text></svg>">
-<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@400;500;600;700&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
 :root {
-  /* ── LIGHT STEEL INDUSTRIAL PALETTE ── */
-  --bg:      #dde2e8;   /* ανοιχτό γκρι ατσάλι — φόντο */
-  --bg2:     #eef1f4;   /* κάρτες — σχεδόν λευκό ατσάλι */
-  --bg3:     #f5f7f9;   /* inputs — πολύ ανοιχτό */
-  --bg4:     #c8cfd8;   /* hover/active */
-  --border:  #b0bac8;   /* ορατό steel edge */
-  --border2: #8a98aa;   /* έντονο edge */
+  /* ── CALM DARK INDUSTRIAL PALETTE (mobile-first) ── */
+  --bg:      #15181D;   /* βάθος — ουδέτερο ανθρακί, όχι μαύρο/μπλε */
+  --bg2:     #1C2026;   /* κάρτες */
+  --bg3:     #242830;   /* inputs */
+  --bg4:     #2D323C;   /* hover/active */
+  --border:  #2E333B;   /* λεπτό edge */
+  --border2: #3D434D;   /* εντονότερο edge */
 
-  /* ── TEXT — σκούρο για αντίθεση ── */
-  --text:    #1a2030;   /* σχεδόν μαύρο navy */
-  --text2:   #3a4a5e;   /* δευτερεύον σκούρο */
-  --text3:   #6a7a90;   /* muted */
+  /* ── TEXT ── */
+  --text:    #E7E9EC;   /* κύριο κείμενο — όχι καθαρό λευκό, λιγότερη ένταση */
+  --text2:   #A4AAB3;   /* δευτερεύον */
+  --text3:   #686E78;   /* muted */
 
-  /* ── INDUSTRIAL BLUE — primary accent ── */
-  --accent:  #1a5fa8;   /* βαθύ βιομηχανικό μπλε */
-  --accent2: #2878cc;   /* ανοιχτότερο μπλε */
+  /* ── ACCENT — απαλό, χαμηλού κορεσμού πορτοκαλί ── */
+  --accent:  #D98E5C;
+  --accent2: #E3A578;
 
-  /* ── STATUS COLORS ── */
-  --blue:    #1a5fa8;
-  --blue2:   #2878cc;
-  --green:   #1e7a42;   /* safety green */
-  --green2:  #28a05a;
-  --red:     #c0251e;   /* hazard red */
-  --red2:    #e03830;
-  --purple:  #5a3a8a;
-  --purple2: #7a5aaa;
-  --cyan:    #1a7a88;
+  /* ── STATUS COLORS — χαμηλός κορεσμός, χωρίς "νέον" ── */
+  --blue:    #6F94B8;
+  --blue2:   #89A8C8;
+  --green:   #7CB88A;
+  --green2:  #94C9A0;
+  --red:     #C97070;
+  --red2:    #D68888;
+  --purple:  #9489B8;
+  --purple2: #A89EC8;
+  --cyan:    #6FAFA8;
+  --cyan2:   #87BFB9;
 
-  --font:  'Rajdhani', sans-serif;
+  /* ── SOFT BADGE BACKGROUNDS ── */
+  /* Διαφανές φόντο στο χρώμα του status + φωτεινό κείμενο του ίδιου χρώματος.
+     Αντικαθιστά το παλιό light-theme pattern (φωτεινό solid φόντο + σκούρο κείμενο)
+     που δεν λειτουργεί πάνω σε σκούρο φόντο. */
+  --badge-blue-bg:    rgba(111,148,184,0.14);  --badge-blue-bd:    rgba(111,148,184,0.32);
+  --badge-green-bg:   rgba(124,184,138,0.14);  --badge-green-bd:   rgba(124,184,138,0.32);
+  --badge-red-bg:     rgba(201,112,112,0.14);  --badge-red-bd:     rgba(201,112,112,0.32);
+  --badge-purple-bg:  rgba(148,137,184,0.14);  --badge-purple-bd:  rgba(148,137,184,0.32);
+  --badge-cyan-bg:    rgba(111,175,168,0.14);  --badge-cyan-bd:    rgba(111,175,168,0.32);
+  --badge-amber-bg:   rgba(217,142,92,0.14);   --badge-amber-bd:   rgba(217,142,92,0.32);
+  --badge-neutral-bg: rgba(164,170,179,0.10);  --badge-neutral-bd: rgba(164,170,179,0.28);
+
+  --font:  'Inter', sans-serif;
   --mono:  'Share Tech Mono', monospace;
   --cond:  'Oswald', sans-serif;
-  --radius:  6px;
-  --radius2: 8px;
+  --radius:  8px;
+  --radius2: 12px;
+  --on-accent: #1C1410;  /* κείμενο πάνω σε accent-χρωματισμένα κουμπιά */
 }
 
 * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -58,15 +72,6 @@
 body {
   font-family: var(--font);
   background: var(--bg);
-  background-image:
-    repeating-linear-gradient(
-      0deg, transparent, transparent 39px,
-      rgba(0,0,0,0.04) 39px, rgba(0,0,0,0.04) 40px
-    ),
-    repeating-linear-gradient(
-      90deg, transparent, transparent 79px,
-      rgba(0,0,0,0.02) 79px, rgba(0,0,0,0.02) 80px
-    );
   color: var(--text);
   min-height: 100vh;
   font-size: 15px;
@@ -82,7 +87,7 @@ body {
   min-height: 100vh;
   padding: 24px;
   background:
-    linear-gradient(160deg, #c8d0da 0%, #dde2e8 60%, #d0d8e4 100%);
+    linear-gradient(160deg, #0F1216 0%, #15181D 60%, #181C22 100%);
 }
 
 .login-card {
@@ -174,7 +179,7 @@ body {
 .btn-primary {
   width: 100%;
   background: var(--accent);
-  color: #0f1117;
+  color: var(--on-accent);
   border: none;
   border-radius: var(--radius);
   font-family: var(--cond);
@@ -206,10 +211,10 @@ body {
   font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px;
   font-family: var(--cond); letter-spacing: 0.3px;
 }
-.role-admin   { background: #fde8e0; color: #8a2010; border: 1px solid #f0a090; }
-.role-super   { background: #fef8e0; color: #7a5800; border: 1px solid #e8d080; }
-.role-tech    { background: #e0ecf8; color: #0a3a70; border: 1px solid #90bce0; }
-.role-view    { background: #e0f4e8; color: #0a4a20; border: 1px solid #80c8a0; }
+.role-admin   { background: var(--badge-red-bg);    color: var(--red2);    border: 1px solid var(--badge-red-bd); }
+.role-super   { background: var(--badge-amber-bg);  color: var(--accent2); border: 1px solid var(--badge-amber-bd); }
+.role-tech    { background: var(--badge-blue-bg);   color: var(--blue2);   border: 1px solid var(--badge-blue-bd); }
+.role-view    { background: var(--badge-green-bg);  color: var(--green2);  border: 1px solid var(--badge-green-bd); }
 
 .login-error {
   color: var(--red2);
@@ -223,7 +228,7 @@ body {
 #app { display: none; flex-direction: column; min-height: 100vh; }
 
 .topbar {
-  background: #1a2535;
+  background: #101317;
   border-bottom: 2px solid var(--accent);
   padding: 0 16px;
   height: 52px;
@@ -246,7 +251,7 @@ body {
   font-family: var(--cond);
   font-size: 17px;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--text);
   letter-spacing: 2px;
   text-transform: uppercase;
 }
@@ -254,11 +259,11 @@ body {
 .topbar-tag {
   font-family: var(--mono);
   font-size: 11px;
-  color: #a0b4cc;
-  background: rgba(255,255,255,0.1);
+  color: var(--text2);
+  background: rgba(255,255,255,0.06);
   padding: 2px 8px;
   border-radius: 4px;
-  border: 1px solid rgba(255,255,255,0.15);
+  border: 1px solid rgba(255,255,255,0.1);
 }
 
 .topbar-tag {
@@ -302,23 +307,23 @@ body {
 }
 
 .icon-btn {
-  background: rgba(255,255,255,0.1);
-  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
   border-radius: var(--radius);
-  color: #a0b4cc;
+  color: var(--text2);
   width: 34px; height: 34px;
   display: flex; align-items: center; justify-content: center;
   cursor: pointer;
   font-size: 16px;
   transition: border-color 0.2s, color 0.2s;
 }
-.icon-btn:hover { border-color: var(--accent2); color: #fff; }
+.icon-btn:hover { border-color: var(--accent2); color: var(--text); }
 
 /* ── BOTTOM NAV ── */
 .bottom-nav {
   position: fixed;
   bottom: 0; left: 0; right: 0;
-  background: #1a2535;
+  background: #101317;
   border-top: 2px solid var(--accent);
   display: flex;
   z-index: 100;
@@ -335,7 +340,7 @@ body {
   padding: 8px 4px 6px;
   cursor: pointer;
   transition: color 0.2s;
-  color: #607080;
+  color: var(--text3);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.5px;
@@ -347,8 +352,8 @@ body {
 }
 
 .nav-item .nav-icon { font-size: 20px; line-height: 1; }
-.nav-item.active { color: #60aaee; }
-.nav-item.active .nav-icon { filter: drop-shadow(0 0 5px rgba(40,120,204,0.6)); }
+.nav-item.active { color: var(--accent2); }
+.nav-item.active .nav-icon { filter: drop-shadow(0 0 5px rgba(217,142,92,0.5)); }
 
 .nav-item {
   flex: 1;
@@ -447,9 +452,9 @@ body {
 }
 
 .kpi-card.amber::before { background: linear-gradient(90deg, var(--accent), var(--accent2)); }
-.kpi-card.blue::before  { background: linear-gradient(90deg, #0a3060, var(--blue2)); }
-.kpi-card.green::before { background: linear-gradient(90deg, #0a4020, var(--green2)); }
-.kpi-card.red::before   { background: linear-gradient(90deg, #6a1010, var(--red2)); }
+.kpi-card.blue::before  { background: linear-gradient(90deg, var(--blue), var(--blue2)); }
+.kpi-card.green::before { background: linear-gradient(90deg, var(--green), var(--green2)); }
+.kpi-card.red::before   { background: linear-gradient(90deg, var(--red), var(--red2)); }
 
 .kpi-value {
   font-family: var(--mono);
@@ -499,7 +504,7 @@ body {
   background: var(--accent);
   border: none;
   border-radius: var(--radius);
-  color: #0f1117;
+  color: var(--on-accent);
   width: 42px;
   height: 42px;
   font-size: 20px;
@@ -555,10 +560,10 @@ body {
   white-space: nowrap;
 }
 
-.status-ok     { background: #d0f0dc; color: #0a4a20; border: 1px solid #80c8a0; }
-.status-done   { background: #d0e8f8; color: #0a3060; border: 1px solid #80b8e0; }
-.status-pending{ background: #fef0d0; color: #6a4000; border: 1px solid #e0b860; }
-.status-new    { background: #e8ecf0; color: #6a7a90; border: 1px solid #b0bac8; }
+.status-ok     { background: var(--badge-green-bg);   color: var(--green2); border: 1px solid var(--badge-green-bd); }
+.status-done   { background: var(--badge-blue-bg);     color: var(--blue2);  border: 1px solid var(--badge-blue-bd); }
+.status-pending{ background: var(--badge-amber-bg);    color: var(--accent2); border: 1px solid var(--badge-amber-bd); }
+.status-new    { background: var(--badge-neutral-bg);  color: var(--text2);  border: 1px solid var(--badge-neutral-bd); }
 
 .det-arrow { color: var(--text3); font-size: 16px; }
 
@@ -590,7 +595,7 @@ body {
 .filter-pill.active {
   background: var(--accent);
   border-color: var(--accent);
-  color: #0f1117;
+  color: var(--on-accent);
 }
 
 /* ── DETECTOR DETAIL ── */
@@ -640,8 +645,8 @@ body {
   border-radius: 4px;
   letter-spacing: 0.3px;
 }
-.meta-gas  { background: #daeaf8; color: #0a3060; border: 1px solid #90bce0; }
-.meta-fire { background: #fde0da; color: #6a1010; border: 1px solid #e09080; }
+.meta-gas  { background: var(--badge-blue-bg); color: var(--blue2); border: 1px solid var(--badge-blue-bd); }
+.meta-fire { background: var(--badge-red-bg);  color: var(--red2);  border: 1px solid var(--badge-red-bd); }
 .meta-area { background: var(--bg3); color: var(--text2); border: 1px solid var(--border); }
 .meta-year { background: var(--bg3); color: var(--text3); border: 1px solid var(--border); font-family: var(--mono); }
 
@@ -909,7 +914,7 @@ body {
   background: var(--accent);
   border: none;
   border-radius: var(--radius);
-  color: #0f1117;
+  color: var(--on-accent);
   font-family: var(--cond);
   font-size: 15px;
   font-weight: 700;
@@ -925,7 +930,7 @@ body {
   left: 50%;
   transform: translateX(-50%) translateY(20px);
   background: var(--green);
-  color: #fff;
+  color: var(--bg);
   font-family: var(--cond);
   font-size: 14px;
   font-weight: 600;
@@ -940,10 +945,10 @@ body {
 
 /* ── LANG TOGGLE ── */
 .lang-btn {
-  background: rgba(255,255,255,0.1);
-  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
   border-radius: var(--radius);
-  color: #a0b4cc;
+  color: var(--text2);
   font-family: var(--mono);
   font-size: 11px;
   font-weight: 600;
@@ -952,7 +957,7 @@ body {
   letter-spacing: 0.5px;
   transition: all 0.15s;
 }
-.lang-btn:hover { border-color: var(--accent2); color: #fff; }
+.lang-btn:hover { border-color: var(--accent2); color: var(--text); }
 
 /* ── DIVIDER ── */
 .divider {
@@ -976,7 +981,7 @@ body {
   background: var(--accent);
   border: none;
   border-radius: var(--radius);
-  color: #0f1117;
+  color: var(--on-accent);
   font-family: var(--cond);
   font-size: 16px;
   font-weight: 700;
@@ -1002,10 +1007,10 @@ body {
 }
 
 /* ── ALERT BADGES ── */
-.alert-overdue  { background: #fde0de; color: #8a1010; border: 1px solid #e08080; }
-.alert-soon     { background: #fef4d8; color: #7a4400; border: 1px solid #e8c060; }
-.alert-ok       { background: #d8f0e4; color: #0a4820; border: 1px solid #80c8a0; }
-.alert-none     { background: #e8ecf0; color: #6a7a90; border: 1px solid #b0bac8; }
+.alert-overdue  { background: var(--badge-red-bg);     color: var(--red2);    border: 1px solid var(--badge-red-bd); }
+.alert-soon     { background: var(--badge-amber-bg);   color: var(--accent2); border: 1px solid var(--badge-amber-bd); }
+.alert-ok       { background: var(--badge-green-bg);   color: var(--green2);  border: 1px solid var(--badge-green-bd); }
+.alert-none     { background: var(--badge-neutral-bg); color: var(--text2);   border: 1px solid var(--badge-neutral-bd); }
 
 /* ── IMPORT DROP ZONE ── */
 .drop-zone {
@@ -1429,6 +1434,20 @@ function saveDeletedCylIds() {
   localStorage.setItem('vmrtin26_deleted_cyl_ids', JSON.stringify(DELETED_CYL_IDS));
 }
 
+// NEWPROJECT_ITEMS: { id, tag, project, location, area, type, category,
+//                     installDate, technician, status }
+// status: 'ΠΡΟΣ ΕΓΚΑΤΑΣΤΑΣΗ' | 'ΕΓΚΑΤΕΣΤΗΜΕΝΟ' | 'ΣΕ ΔΟΚΙΜΗ' | 'ΕΤΟΙΜΟ ΓΙΑ ΠΑΡΑΔΟΣΗ'
+let NEWPROJECT_ITEMS = JSON.parse(localStorage.getItem('vmrtin26_newproject') || '[]');
+let DELETED_NP_IDS = JSON.parse(localStorage.getItem('vmrtin26_deleted_np_ids') || '[]');
+
+function saveNewProjectItems() {
+  localStorage.setItem('vmrtin26_newproject', JSON.stringify(NEWPROJECT_ITEMS));
+}
+
+function saveDeletedNpIds() {
+  localStorage.setItem('vmrtin26_deleted_np_ids', JSON.stringify(DELETED_NP_IDS));
+}
+
 // ── Push μία φιάλη στο Sheet (upsert) ──
 async function gsSaveCylinder(cyl) {
   try {
@@ -1449,6 +1468,53 @@ async function gsDeleteCylinder(id) {
     return true;
   } catch(err) {
     console.error('gsDeleteCylinder error:', err);
+    return false;
+  }
+}
+
+// ── ΝΕΟ ΕΡΓΟ: push/delete/promote στο Sheet ──
+async function gsSaveNewProjectItem(item) {
+  if (!gsConnected) return false;
+  try {
+    await gsPost({ action: 'addNewProjectItem', data: item });
+    return true;
+  } catch(err) {
+    console.error('gsSaveNewProjectItem error:', err);
+    return false;
+  }
+}
+
+async function gsUpdateNewProjectItem(item) {
+  if (!gsConnected) return false;
+  try {
+    await gsPost({ action: 'updateNewProjectItem', data: item });
+    return true;
+  } catch(err) {
+    console.error('gsUpdateNewProjectItem error:', err);
+    return false;
+  }
+}
+
+async function gsDeleteNewProjectItem(id) {
+  if (!gsConnected) return false;
+  try {
+    await gsPost({ action: 'deleteNewProjectItem', data: { id } });
+    return true;
+  } catch(err) {
+    console.error('gsDeleteNewProjectItem error:', err);
+    return false;
+  }
+}
+
+// Μεταφορά στο κανονικό πρόγραμμα: το backend δημιουργεί DETECTORS row
+// ΚΑΙ σβήνει το NEWPROJECT row σε μία ενέργεια (server-side, atomic).
+async function gsPromoteNewProjectItem(item) {
+  if (!gsConnected) return false;
+  try {
+    await gsPost({ action: 'promoteNewProjectItem', data: item });
+    return true;
+  } catch(err) {
+    console.error('gsPromoteNewProjectItem error:', err);
     return false;
   }
 }
@@ -1645,6 +1711,36 @@ async function syncFromSheets() {
         CYLINDERS
           .filter(c => !DELETED_CYL_IDS.includes(String(c.id)))
           .forEach(c => gsSaveCylinder(c));
+      }
+    }
+
+    // ── ΝΕΟ ΕΡΓΟ: ίδιο tombstone-aware sync με τις φιάλες ──
+    const npRes = await gsGet({ action: 'getNewProjectItems' });
+    if (npRes.items) {
+      if (npRes.items.length > 0) {
+        const npSheetIds = new Set(npRes.items.map(it => String(it.id)));
+        const npLocalOnly = NEWPROJECT_ITEMS.filter(it =>
+          !npSheetIds.has(String(it.id)) && !DELETED_NP_IDS.includes(String(it.id))
+        );
+        NEWPROJECT_ITEMS.length = 0;
+        npRes.items
+          .filter(it => !DELETED_NP_IDS.includes(String(it.id)))
+          .forEach(it => NEWPROJECT_ITEMS.push(it));
+        npLocalOnly.forEach(it => NEWPROJECT_ITEMS.push(it));
+        saveNewProjectItems();
+        npLocalOnly.forEach(it => gsSaveNewProjectItem(it));
+        DELETED_NP_IDS
+          .filter(tid => npSheetIds.has(tid))
+          .forEach(tid => gsDeleteNewProjectItem(tid).then(ok => {
+            if (ok) {
+              DELETED_NP_IDS = DELETED_NP_IDS.filter(x => x !== tid);
+              saveDeletedNpIds();
+            }
+          }));
+      } else if (NEWPROJECT_ITEMS.length > 0) {
+        NEWPROJECT_ITEMS
+          .filter(it => !DELETED_NP_IDS.includes(String(it.id)))
+          .forEach(it => gsSaveNewProjectItem(it));
       }
     }
 
@@ -2485,6 +2581,7 @@ function showPage(page) {
   else if (page === 'admin') renderAdmin(mc);
   else if (page === 'schedule') renderSchedule(mc);
   else if (page === 'cylinders') renderCylinders(mc);
+  else if (page === 'newproject') renderNewProject(mc);
 
   mc.scrollTop = 0;
 }
@@ -2629,47 +2726,66 @@ let searchQ = '';
 
 function renderDetectors(mc) {
   const areas = ['all', ...new Set(DETECTORS.map(d => d.area))];
+
+  mc.innerHTML = `
+    <div class="page-header">
+      <div class="page-title">${t('det-title')}</div>
+      <div class="page-sub" id="det-count-sub">${t('det-sub')}</div>
+    </div>
+    <div class="search-wrap">
+      <input type="text" class="search-input" placeholder="${t('search-ph')}" value="${searchQ}" id="search-input" oninput="searchQ=this.value;renderDetectorList()">
+      <button class="qr-btn" onclick="openQR('detectors')" title="QR Scan">📷</button>
+    </div>
+    <div class="filter-row">
+      ${areas.map(a => `<div class="filter-pill ${filterArea===a?'active':''}" data-area="${a}" onclick="filterArea='${a}';renderDetectorList()">${a==='all'?t('all'):a}</div>`).join('')}
+    </div>
+    <div id="det-list"></div>
+  `;
+  renderDetectorList();
+}
+
+// Ξαναχτίζει ΜΟΝΟ τη λίστα ανιχνευτών (#det-list) — όχι ολόκληρη τη σελίδα.
+// Καλείται σε κάθε keystroke του search· έτσι το <input> ΔΕΝ ξαναδημιουργείται
+// ποτέ, οπότε ποτέ δεν χάνει focus/θέση cursor (το πρόβλημα "πετάει εκτός").
+function renderDetectorList() {
+  const listEl = document.getElementById('det-list');
+  if (!listEl) return;
+
   const filtered = DETECTORS.filter(d => {
     const areaOk = filterArea === 'all' || d.area === filterArea;
     const searchOk = !searchQ || d.tag.toLowerCase().includes(searchQ.toLowerCase());
     return areaOk && searchOk;
   });
 
-  mc.innerHTML = `
-    <div class="page-header">
-      <div class="page-title">${t('det-title')}</div>
-      <div class="page-sub">${t('det-sub')} · ${filtered.length} ανιχνευτές</div>
-    </div>
-    <div class="search-wrap">
-      <input type="text" class="search-input" placeholder="${t('search-ph')}" value="${searchQ}" id="search-input" oninput="searchQ=this.value;renderDetectors(document.getElementById('main-content'))">
-      <button class="qr-btn" onclick="openQR('detectors')" title="QR Scan">📷</button>
-    </div>
-    <div class="filter-row">
-      ${areas.map(a => `<div class="filter-pill ${filterArea===a?'active':''}" onclick="filterArea='${a}';renderDetectors(document.getElementById('main-content'))">${a==='all'?t('all'):a}</div>`).join('')}
-    </div>
-    <div id="det-list">
-      ${filtered.map(d => {
-        const status = getAlertStatus(d);
-        const nextDate = getNextCalDate(d);
-        const days = getDaysUntil(nextDate);
-        const alertClass = status === 'overdue' ? 'alert-overdue' : status === 'soon' ? 'alert-soon' : status === 'ok' ? 'alert-ok' : 'alert-none';
-        const alertLabel = status === 'overdue' ? `${Math.abs(days)}μ πριν` : status === 'soon' ? `${days}μ` : status === 'ok' ? '✓' : '—';
-        return `
-          <div class="detector-item" onclick="openDetector('${d.tag}')">
-            <div style="flex:1;min-width:0">
-              <div class="det-tag">${d.tag}</div>
-              <div class="det-area">${d.location || d.area} · ${d.entries.length} εγγρ.</div>
-            </div>
-            <div style="text-align:right;margin-right:8px">
-              ${nextDate ? `<div style="font-family:var(--mono);font-size:10px;color:var(--text3)">${formatDate(nextDate)}</div>` : ''}
-            </div>
-            <span class="det-status ${alertClass}">${alertLabel}</span>
-            <span class="det-arrow">›</span>
+  // Ενημέρωση μετρητή και active state των filter pills χωρίς re-render του input
+  const subEl = document.getElementById('det-count-sub');
+  if (subEl) subEl.textContent = `${t('det-sub')} · ${filtered.length} ανιχνευτές`;
+  document.querySelectorAll('.filter-pill').forEach(p => {
+    p.classList.toggle('active', p.dataset.area === filterArea);
+  });
+
+  listEl.innerHTML = `
+    ${filtered.map(d => {
+      const status = getAlertStatus(d);
+      const nextDate = getNextCalDate(d);
+      const days = getDaysUntil(nextDate);
+      const alertClass = status === 'overdue' ? 'alert-overdue' : status === 'soon' ? 'alert-soon' : status === 'ok' ? 'alert-ok' : 'alert-none';
+      const alertLabel = status === 'overdue' ? `${Math.abs(days)}μ πριν` : status === 'soon' ? `${days}μ` : status === 'ok' ? '✓' : '—';
+      return `
+        <div class="detector-item" onclick="openDetector('${d.tag}')">
+          <div style="flex:1;min-width:0">
+            <div class="det-tag">${d.tag}</div>
+            <div class="det-area">${d.location || d.area} · ${d.entries.length} εγγρ.</div>
           </div>
-        `;
-      }).join('')}
-      ${filtered.length === 0 ? `<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-text">Δεν βρέθηκαν αποτελέσματα</div></div>` : ''}
-    </div>
+          <div style="text-align:right;margin-right:8px">
+            ${nextDate ? `<div style="font-family:var(--mono);font-size:10px;color:var(--text3)">${formatDate(nextDate)}</div>` : ''}
+          </div>
+          <span class="det-status ${alertClass}">${alertLabel}</span>
+          <span class="det-arrow">›</span>
+        </div>
+      `;
+    }).join('')}
+    ${filtered.length === 0 ? `<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-text">Δεν βρέθηκαν αποτελέσματα</div></div>` : ''}
   `;
 }
 
@@ -3209,6 +3325,19 @@ function renderAdmin(mc) {
       <div class="page-sub">${t('admin-sub')}</div>
     </div>
 
+
+    <!-- ΝΕΟ ΕΡΓΟ -->
+    <div class="card" style="border-color:var(--cyan);border-top:2px solid var(--cyan);margin-bottom:12px">
+      <div class="card-title" style="color:var(--cyan)">🚧 ΝΕΟ ΕΡΓΟ — ΕΓΚΑΤΑΣΤΑΣΗ ΑΝΙΧΝΕΥΤΩΝ</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px">
+        Παρακολούθηση νέων ανιχνευτών μέχρι να ολοκληρωθεί η εγκατάσταση —
+        ξεχωριστά από το κανονικό πρόγραμμα συντήρησης.
+      </div>
+      <button onclick="showPage('newproject')"
+        style="width:100%;background:var(--cyan);border:none;border-radius:var(--radius);color:var(--on-accent);padding:10px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer;letter-spacing:0.5px">
+        ➜ ΑΝΟΙΓΜΑ ΝΕΟΥ ΕΡΓΟΥ
+      </button>
+    </div>
 
     <!-- BACKUP / RESTORE -->
     <div class="card" style="border-color:var(--green);border-top:2px solid var(--green);margin-bottom:12px">
@@ -4752,6 +4881,254 @@ function exportSchedulePDF(m, y, pdfFilter) {
 
 
 let currentCylMonth = getCurrentMonthKey();
+
+// ══════════════════════════════════════════
+// ΝΕΟ ΕΡΓΟ — εγκατάσταση νέων ανιχνευτών πριν μπουν στο κανονικό πρόγραμμα
+// ══════════════════════════════════════════
+const NP_STATUSES = ['ΠΡΟΣ ΕΓΚΑΤΑΣΤΑΣΗ', 'ΕΓΚΑΤΕΣΤΗΜΕΝΟ', 'ΣΕ ΔΟΚΙΜΗ', 'ΕΤΟΙΜΟ ΓΙΑ ΠΑΡΑΔΟΣΗ'];
+const NP_STATUS_COLOR = {
+  'ΠΡΟΣ ΕΓΚΑΤΑΣΤΑΣΗ':    'var(--text3)',
+  'ΕΓΚΑΤΕΣΤΗΜΕΝΟ':       'var(--blue2)',
+  'ΣΕ ΔΟΚΙΜΗ':           'var(--accent2)',
+  'ΕΤΟΙΜΟ ΓΙΑ ΠΑΡΑΔΟΣΗ': 'var(--green2)',
+};
+let currentNpFilter = 'ΟΛΑ';
+let currentNpProjectFilter = 'ΟΛΑ';
+
+function renderNewProject(mc) {
+  const projects = ['ΟΛΑ', ...new Set(NEWPROJECT_ITEMS.map(it => it.project).filter(Boolean))];
+  const filtered = NEWPROJECT_ITEMS.filter(it =>
+    (currentNpFilter === 'ΟΛΑ' || it.status === currentNpFilter) &&
+    (currentNpProjectFilter === 'ΟΛΑ' || it.project === currentNpProjectFilter)
+  );
+  const total = NEWPROJECT_ITEMS.length;
+  const ready = NEWPROJECT_ITEMS.filter(it => it.status === 'ΕΤΟΙΜΟ ΓΙΑ ΠΑΡΑΔΟΣΗ').length;
+  const installed = NEWPROJECT_ITEMS.filter(it => it.status !== 'ΠΡΟΣ ΕΓΚΑΤΑΣΤΑΣΗ').length;
+
+  mc.innerHTML = `
+    <div class="page-header">
+      <div class="page-title">🚧 ΝΕΟ ΕΡΓΟ</div>
+      <div class="page-sub">Εγκατάσταση νέων ανιχνευτών — ξεχωριστά από το κανονικό πρόγραμμα</div>
+    </div>
+
+    <div class="card" style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+        <span style="font-family:var(--mono);font-size:13px;color:var(--text2)">${installed}/${total} εγκατεστημένα</span>
+        <span style="font-family:var(--mono);font-size:13px;color:var(--green2)">${ready} έτοιμα για παράδοση</span>
+      </div>
+      <div style="height:6px;background:var(--bg3);border-radius:3px;overflow:hidden">
+        <div style="height:100%;width:${total?Math.round(installed/total*100):0}%;background:var(--cyan);border-radius:3px"></div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+      <select id="np-project-filter" style="flex:1;min-width:120px;padding:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);font-size:13px"
+        onchange="currentNpProjectFilter=this.value;renderNewProject(document.getElementById('main-content'))">
+        ${projects.map(p => `<option value="${p}" ${currentNpProjectFilter===p?'selected':''}>${p==='ΟΛΑ'?'Όλα τα έργα':p}</option>`).join('')}
+      </select>
+      <button onclick="showAddNpItemModal()"
+        style="background:var(--cyan);border:none;border-radius:var(--radius);color:var(--on-accent);padding:8px 16px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap">
+        + ΝΕΟΣ
+      </button>
+    </div>
+
+    <div style="display:flex;gap:6px;margin-bottom:14px;overflow-x:auto;padding-bottom:2px">
+      <button onclick="currentNpFilter='ΟΛΑ';renderNewProject(document.getElementById('main-content'))"
+        style="flex-shrink:0;padding:6px 12px;border-radius:16px;font-size:11px;font-family:var(--cond);font-weight:600;cursor:pointer;border:1px solid ${currentNpFilter==='ΟΛΑ'?'var(--cyan)':'var(--border)'};background:${currentNpFilter==='ΟΛΑ'?'var(--badge-cyan-bg)':'var(--bg3)'};color:${currentNpFilter==='ΟΛΑ'?'var(--cyan2)':'var(--text2)'}">
+        ΟΛΑ (${total})
+      </button>
+      ${NP_STATUSES.map(s => {
+        const count = NEWPROJECT_ITEMS.filter(it => it.status === s).length;
+        const active = currentNpFilter === s;
+        return `<button onclick="currentNpFilter='${s}';renderNewProject(document.getElementById('main-content'))"
+          style="flex-shrink:0;padding:6px 12px;border-radius:16px;font-size:11px;font-family:var(--cond);font-weight:600;cursor:pointer;border:1px solid ${active?NP_STATUS_COLOR[s]:'var(--border)'};background:${active?'var(--bg3)':'var(--bg2)'};color:${active?NP_STATUS_COLOR[s]:'var(--text3)'}">
+          ${s} (${count})
+        </button>`;
+      }).join('')}
+    </div>
+
+    ${filtered.length ? filtered.map(it => `
+      <div class="card" style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div>
+            <div style="font-family:var(--mono);font-size:17px;color:var(--text)">${it.tag || '—'}</div>
+            <div style="font-size:12px;color:var(--text3);margin-top:2px">${it.location || ''}</div>
+            ${it.project ? `<div style="font-size:11px;color:var(--cyan2);margin-top:4px">📁 ${it.project}</div>` : ''}
+          </div>
+          <button onclick="deleteNpItem('${it.id}')" title="Διαγραφή"
+            style="background:rgba(200,0,0,0.08);border:1px solid var(--red);border-radius:var(--radius);color:var(--red2);width:30px;height:30px;cursor:pointer;font-size:13px;flex-shrink:0">🗑</button>
+        </div>
+
+        <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+          <span class="meta-badge ${it.type==='GAS'?'meta-gas':'meta-fire'}">${it.type}</span>
+          ${it.area ? `<span class="meta-badge meta-area">📍 ${it.area}</span>` : ''}
+          ${it.category ? `<span class="meta-badge meta-area">${it.category}</span>` : ''}
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:12px;color:var(--text2)">
+          <span>📅 ${it.installDate ? formatDate(it.installDate) : '—'}</span>
+          <span>👤 ${it.technician || '—'}</span>
+        </div>
+
+        <select onchange="setNpStatus('${it.id}',this.value)"
+          style="width:100%;margin-top:10px;padding:9px;background:var(--bg3);border:1px solid ${NP_STATUS_COLOR[it.status]};border-radius:var(--radius);color:${NP_STATUS_COLOR[it.status]};font-family:var(--cond);font-weight:600;font-size:12px">
+          ${NP_STATUSES.map(s => `<option value="${s}" ${it.status===s?'selected':''}>${s}</option>`).join('')}
+        </select>
+
+        ${it.status === 'ΕΤΟΙΜΟ ΓΙΑ ΠΑΡΑΔΟΣΗ' ? `
+        <button onclick="promoteNpItem('${it.id}')"
+          style="width:100%;margin-top:8px;background:var(--green);border:none;border-radius:var(--radius);color:var(--bg);padding:11px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer">
+          ✓ ΜΕΤΑΦΟΡΑ ΣΤΟ ΠΡΟΓΡΑΜΜΑ
+        </button>` : ''}
+      </div>
+    `).join('') : `<div class="empty-state"><div class="empty-icon">🚧</div><div class="empty-text">Δεν υπάρχουν ανιχνευτές έργου σε αυτό το φίλτρο</div></div>`}
+  `;
+}
+
+function showAddNpItemModal() {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα','error'); return; }
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay open';
+  overlay.id = 'addnp-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box" style="max-width:400px;text-align:left;max-height:90vh;overflow-y:auto">
+      <div class="modal-title" style="margin-bottom:16px">🚧 Νέος Ανιχνευτής Έργου</div>
+
+      <label class="field-label">TAG *</label>
+      <input type="text" class="field-input" id="np-tag" placeholder="π.χ. 44-GD-099" style="margin-bottom:10px">
+
+      <label class="field-label">ΚΩΔΙΚΟΣ/ΟΝΟΜΑ ΕΡΓΟΥ</label>
+      <input type="text" class="field-input" id="np-project" placeholder="π.χ. EXPANSION-2026" style="margin-bottom:10px">
+
+      <label class="field-label">ΤΟΠΟΘΕΣΙΑ</label>
+      <input type="text" class="field-input" id="np-loc" placeholder="π.χ. C3 Unit - Area 44" style="margin-bottom:10px">
+
+      <label class="field-label">ΤΥΠΟΣ</label>
+      <select class="field-input" id="np-type" style="margin-bottom:10px">
+        <option value="GAS">GAS</option>
+        <option value="FIRE">FIRE</option>
+      </select>
+
+      <label class="field-label">ΠΕΡΙΟΧΗ</label>
+      <select class="field-input" id="np-area" style="margin-bottom:10px">
+        ${DET_AREAS.map(a=>`<option value="${a}">${a}</option>`).join('')}
+      </select>
+
+      <label class="field-label">ΚΑΤΗΓΟΡΙΑ</label>
+      <select class="field-input" id="np-cat" style="margin-bottom:10px">
+        ${DET_CATEGORIES.map(c=>`<option value="${c}">${c}</option>`).join('')}
+      </select>
+
+      <label class="field-label">ΗΜ. ΕΓΚΑΤΑΣΤΑΣΗΣ</label>
+      <div style="margin-bottom:10px">${dateMaskInputHTML('np-installdate', new Date().toISOString().split('T')[0], "v => {}", 'width:100%;padding:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);font-family:var(--mono);font-size:14px;box-sizing:border-box')}</div>
+
+      <label class="field-label">ΤΕΧΝΙΤΗΣ</label>
+      <input type="text" class="field-input" id="np-tech" placeholder="π.χ. Γ. Παπαδόπουλος" style="margin-bottom:16px">
+
+      <div id="np-error" style="color:var(--red2);font-size:13px;margin-bottom:10px;display:none"></div>
+      <div style="display:flex;gap:8px">
+        <button class="modal-cancel" onclick="document.getElementById('addnp-overlay').remove()">Ακύρωση</button>
+        <button class="modal-ok" onclick="submitNewNpItem()" style="background:var(--cyan)">ΠΡΟΣΘΗΚΗ</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  setTimeout(() => document.getElementById('np-tag')?.focus(), 100);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+}
+
+function submitNewNpItem() {
+  const tag    = document.getElementById('np-tag').value.trim().toUpperCase();
+  const errEl  = document.getElementById('np-error');
+  if (!tag) { errEl.textContent='Το TAG είναι υποχρεωτικό'; errEl.style.display='block'; return; }
+  if (DETECTORS.find(d=>d.tag===tag) || NEWPROJECT_ITEMS.find(it=>it.tag===tag)) {
+    errEl.textContent=`Το TAG ${tag} υπάρχει ήδη`; errEl.style.display='block'; return;
+  }
+
+  const item = {
+    id: 'np_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+    tag,
+    project:     document.getElementById('np-project').value.trim(),
+    location:    document.getElementById('np-loc').value.trim(),
+    area:        document.getElementById('np-area').value,
+    type:        document.getElementById('np-type').value,
+    category:    document.getElementById('np-cat').value,
+    installDate: document.getElementById('np-installdate__hidden').value,
+    technician:  document.getElementById('np-tech').value.trim(),
+    status:      'ΠΡΟΣ ΕΓΚΑΤΑΣΤΑΣΗ',
+  };
+
+  NEWPROJECT_ITEMS.push(item);
+  saveNewProjectItems();
+  gsSaveNewProjectItem(item);
+
+  document.getElementById('addnp-overlay').remove();
+  showToast(`✓ ${tag} προστέθηκε στο έργο`);
+  renderNewProject(document.getElementById('main-content'));
+}
+
+function setNpStatus(id, status) {
+  const it = NEWPROJECT_ITEMS.find(x => String(x.id) === String(id));
+  if (!it) return;
+  it.status = status;
+  saveNewProjectItems();
+  gsUpdateNewProjectItem(it);
+  renderNewProject(document.getElementById('main-content'));
+}
+
+function deleteNpItem(id) {
+  NEWPROJECT_ITEMS = NEWPROJECT_ITEMS.filter(it => String(it.id) !== String(id));
+  saveNewProjectItems();
+  if (!DELETED_NP_IDS.includes(String(id))) DELETED_NP_IDS.push(String(id));
+  saveDeletedNpIds();
+  gsDeleteNewProjectItem(id).then(ok => {
+    if (ok) {
+      DELETED_NP_IDS = DELETED_NP_IDS.filter(x => x !== String(id));
+      saveDeletedNpIds();
+    }
+  });
+  showToast('✓ Διαγράφηκε από το έργο');
+  renderNewProject(document.getElementById('main-content'));
+}
+
+// Μεταφέρει τον ανιχνευτή έργου στο κανονικό πρόγραμμα συντήρησης:
+// δημιουργεί πλήρη DETECTORS εγγραφή (nextCalDate = ημ. εγκατάστασης + interval
+// κατηγορίας) και τον αφαιρεί από τη λίστα έργου — local + Sheet, μία ενέργεια.
+function promoteNpItem(id) {
+  const it = NEWPROJECT_ITEMS.find(x => String(x.id) === String(id));
+  if (!it) return;
+  if (!confirm(`Μεταφορά του ${it.tag} στο κανονικό πρόγραμμα συντήρησης;`)) return;
+
+  const interval = CAL_INTERVALS[it.category] || CAL_INTERVALS['DEFAULT'];
+  const baseDate = it.installDate ? new Date(it.installDate) : new Date();
+  const nextDate = new Date(baseDate);
+  nextDate.setMonth(nextDate.getMonth() + interval);
+  const nextCalDate = nextDate.toISOString().split('T')[0];
+
+  DETECTORS.push({
+    tag: it.tag,
+    description: it.project ? ('Έργο: ' + it.project) : '',
+    location: it.location, type: it.type, area: it.area,
+    category: it.category, calInterval: null,
+    nextCalDate, entries: []
+  });
+  saveDetectors();
+
+  NEWPROJECT_ITEMS = NEWPROJECT_ITEMS.filter(x => String(x.id) !== String(id));
+  saveNewProjectItems();
+  if (!DELETED_NP_IDS.includes(String(id))) DELETED_NP_IDS.push(String(id));
+  saveDeletedNpIds();
+
+  gsPromoteNewProjectItem({ ...it, calInterval: '', nextCalDate }).then(ok => {
+    if (ok) {
+      DELETED_NP_IDS = DELETED_NP_IDS.filter(x => x !== String(id));
+      saveDeletedNpIds();
+    }
+  });
+
+  showToast(`✓ ${it.tag} μεταφέρθηκε στο κανονικό πρόγραμμα`);
+  renderNewProject(document.getElementById('main-content'));
+}
 
 function renderCylinders(mc) {
   currentCylMonth = currentCylMonth || getCurrentMonthKey();
