@@ -5551,8 +5551,35 @@ function exportCylindersPDF(monthKey) {
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js')
-      .then(reg => console.log('SW registered:', reg.scope))
+      .then(reg => {
+        console.log('SW registered:', reg.scope);
+        // Ζήτα αμέσως έλεγχο για νέα έκδοση — χωρίς αυτό, ο browser μπορεί να
+        // σερβίρει την ΠΑΛΙΑ cached έκδοση του index.html για μέρες, κρύβοντας
+        // κάθε νέα διόρθωση μέχρι να κάνει ο χρήστης manual hard-refresh.
+        reg.update();
+        // Αν υπάρχει ήδη νέος SW σε αναμονή, ενεργοποίησέ τον αμέσως
+        if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+        reg.addEventListener('updatefound', () => {
+          const newSW = reg.installing;
+          if (!newSW) return;
+          newSW.addEventListener('statechange', () => {
+            if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+              // Νέα έκδοση εγκατεστημένη — ζήτα να ενεργοποιηθεί αμέσως
+              newSW.postMessage({ type: 'SKIP_WAITING' });
+            }
+          });
+        });
+      })
       .catch(err => console.log('SW error:', err));
+
+    // Όταν ο νέος SW πάρει τον έλεγχο, κάνε reload ΜΙΑ φορά ώστε η σελίδα
+    // να φορτώσει σίγουρα τα νέα αρχεία αντί για τα παλιά cached.
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (refreshing) return;
+      refreshing = true;
+      window.location.reload();
+    });
   });
 }
 
