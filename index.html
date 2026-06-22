@@ -1768,6 +1768,33 @@ async function gsSaveEntry(entry) {
   }
 }
 
+// ΝΕΑ actions — χρειάζονται αντίστοιχο handler στο Code.gs (updateEntry/deleteEntry).
+// Βρίσκουν τη γραμμή στο Sheet με key tag+originalDate+originalTech (update)
+// ή tag+date+tech (delete) — ίδιο convention με το dedup του import.
+async function gsUpdateEntry(data) {
+  if (!gsConnected) return false;
+  try {
+    await gsPost({ action: 'updateEntry', data });
+    return true;
+  } catch(err) {
+    console.error('gsUpdateEntry error:', err);
+    showToast('⚠ Ενημερώθηκε τοπικά — δεν έφτασε στο Sheet', 'error');
+    return false;
+  }
+}
+
+async function gsDeleteEntry(data) {
+  if (!gsConnected) return false;
+  try {
+    await gsPost({ action: 'deleteEntry', data });
+    return true;
+  } catch(err) {
+    console.error('gsDeleteEntry error:', err);
+    showToast('⚠ Διαγράφηκε τοπικά — δεν έφτασε στο Sheet', 'error');
+    return false;
+  }
+}
+
 // ── Save detector to Google Sheets ──
 async function gsSaveDetector(det) {
   if (!gsConnected) return;
@@ -2581,7 +2608,7 @@ function showPage(page) {
   else if (page === 'admin') renderAdmin(mc);
   else if (page === 'schedule') renderSchedule(mc);
   else if (page === 'cylinders') renderCylinders(mc);
-  else if (page === 'newproject') renderNewProject(mc);
+  else if (page === 'newproject') { currentNpProject = null; renderNewProject(mc); }
 
   mc.scrollTop = 0;
 }
@@ -2891,8 +2918,12 @@ function renderDetectorDetail(mc) {
     </div>
     `}
     <div class="card-title" style="margin-bottom:10px">${t('history')}</div>
-    ${d.entries.length ? d.entries.slice().reverse().map(e => `
-      <div class="history-entry">
+    ${d.entries.length ? d.entries.map((e,idx) => ({e,idx})).reverse().map(({e,idx}) => `
+      <div class="history-entry" style="position:relative">
+        ${ROLES[currentUser.role].canAdmin ? `
+        <button onclick="showEditEntryModal('${d.tag}',${idx})" title="Επεξεργασία εγγραφής"
+          style="position:absolute;top:8px;right:8px;background:none;border:none;cursor:pointer;font-size:14px;color:var(--text3);padding:2px;line-height:1">✏️</button>
+        ` : ''}
         <div class="hist-date">📅 ${formatDate(e.date)}</div>
         <div class="hist-task">🔧 ${e.task}</div>
         <div class="hist-tech">👤 ${e.tech} ${e.cylinder ? `<span class="hist-cylinder">${e.cylinder}</span>` : ''}</div>
@@ -2900,6 +2931,94 @@ function renderDetectorDetail(mc) {
       </div>
     `).join('') : `<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">${t('no-hist')}</div></div>`}
   `;
+}
+
+// ── Επεξεργασία/διαγραφή αποθηκευμένης εγγραφής ιστορικού (admin only) ──
+function showEditEntryModal(tag, idx) {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα','error'); return; }
+  const det = DETECTORS.find(d => d.tag === tag);
+  if (!det || !det.entries[idx]) return;
+  const e = det.entries[idx];
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay open';
+  overlay.id = 'editentry-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box" style="max-width:400px;text-align:left;max-height:90vh;overflow-y:auto">
+      <div class="modal-title" style="margin-bottom:16px">✏️ Επεξεργασία εγγραφής — ${tag}</div>
+
+      <label class="field-label">ΗΜΕΡΟΜΗΝΙΑ</label>
+      <div style="margin-bottom:10px">${dateMaskInputHTML('ee-date', e.date || '', "v => {}", 'width:100%;padding:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);font-family:var(--mono);font-size:14px;box-sizing:border-box')}</div>
+
+      <label class="field-label">ΕΡΓΑΣΙΑ</label>
+      <input type="text" class="field-input" id="ee-task" value="${(e.task||'').replace(/"/g,'&quot;')}" style="margin-bottom:10px">
+
+      <label class="field-label">ΤΕΧΝΙΤΗΣ</label>
+      <input type="text" class="field-input" id="ee-tech" value="${(e.tech||'').replace(/"/g,'&quot;')}" style="margin-bottom:10px">
+
+      <label class="field-label">ΦΙΑΛΗ</label>
+      <input type="text" class="field-input" id="ee-cyl" value="${(e.cylinder||'').replace(/"/g,'&quot;')}" style="margin-bottom:10px">
+
+      <label class="field-label">ΣΗΜΕΙΩΣΕΙΣ</label>
+      <textarea class="field-input" id="ee-notes" rows="2" style="margin-bottom:16px;resize:vertical">${e.notes||''}</textarea>
+
+      <div id="ee-error" style="color:var(--red2);font-size:13px;margin-bottom:10px;display:none"></div>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <button class="modal-cancel" onclick="document.getElementById('editentry-overlay').remove()">Ακύρωση</button>
+        <button class="modal-ok" onclick="saveEditedEntry('${tag}',${idx})" style="background:var(--cyan)">✓ Αποθήκευση</button>
+      </div>
+      <button onclick="deleteHistoryEntry('${tag}',${idx})"
+        style="width:100%;background:rgba(200,0,0,0.08);border:1px solid var(--red);border-radius:var(--radius);color:var(--red2);padding:9px;font-family:var(--cond);font-weight:600;font-size:12px;cursor:pointer">
+        🗑 Διαγραφή εγγραφής
+      </button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', ev => { if (ev.target === overlay) overlay.remove(); });
+}
+
+// originalDate/originalTech ταξιδεύουν στο backend ώστε το Code.gs να βρει
+// τη σωστή γραμμή στο Sheet (key = tag+date+tech — ίδια λογική με το dedup του import).
+function saveEditedEntry(tag, idx) {
+  const det = DETECTORS.find(d => d.tag === tag);
+  if (!det || !det.entries[idx]) return;
+  const orig = { ...det.entries[idx] };
+
+  const date  = document.getElementById('ee-date__hidden').value;
+  const task  = document.getElementById('ee-task').value.trim();
+  const tech  = document.getElementById('ee-tech').value.trim();
+  const cyl   = document.getElementById('ee-cyl').value.trim();
+  const notes = document.getElementById('ee-notes').value.trim();
+  const errEl = document.getElementById('ee-error');
+
+  if (!date || !task) { errEl.textContent='Συμπλήρωσε ημερομηνία και εργασία'; errEl.style.display='block'; return; }
+
+  det.entries[idx] = { date, task, tech, cylinder: cyl, notes };
+  saveDetectors();
+  gsUpdateEntry({
+    tag,
+    originalDate: orig.date, originalTech: orig.tech,
+    date, task, cylinder: cyl, tech, notes,
+  });
+
+  document.getElementById('editentry-overlay').remove();
+  showToast('✓ Η εγγραφή ενημερώθηκε');
+  renderDetectorDetail(document.getElementById('main-content'));
+}
+
+function deleteHistoryEntry(tag, idx) {
+  const det = DETECTORS.find(d => d.tag === tag);
+  if (!det || !det.entries[idx]) return;
+  if (!confirm('Διαγραφή αυτής της εγγραφής ιστορικού;\nΗ ενέργεια είναι μη αναστρέψιμη.')) return;
+  const orig = det.entries[idx];
+
+  det.entries.splice(idx, 1);
+  saveDetectors();
+  gsDeleteEntry({ tag, date: orig.date, tech: orig.tech });
+
+  document.getElementById('editentry-overlay')?.remove();
+  showToast('✓ Η εγγραφή διαγράφηκε');
+  renderDetectorDetail(document.getElementById('main-content'));
 }
 
 function setDetInterval(tag, val) {
@@ -4793,7 +4912,7 @@ function exportSchedulePDF(m, y, pdfFilter) {
       <td style="text-align:center;color:#888;font-size:11px">${i+1}</td>
       <td style="font-family:monospace;font-size:12px;color:#1a5fa8;font-weight:700">${d.tag}</td>
       <td style="font-size:11px">${d.location || d.area || '—'}</td>
-      <td style="text-align:center;font-size:10px;color:#666">${d.type || '—'}</td>
+      <td style="text-align:center;font-size:11px"></td>
       <td style="text-align:center;font-family:monospace;font-size:11px">${nd ? formatDate(nd) : '—'}</td>
       <td style="text-align:center">
         <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;
@@ -4801,8 +4920,8 @@ function exportSchedulePDF(m, y, pdfFilter) {
           ${done ? '✓ ΕΓΙΝΕ' : '⏳ ΕΚΚΡΕΜΕΙ'}
         </span>
       </td>
-      <td style="font-size:10px;color:#555">${lastEntry ? lastEntry.tech : '—'}</td>
-      <td style="font-size:10px;color:#555">${lastEntry ? lastEntry.task : '—'}</td>
+      <td style="font-size:10px;color:#555">${lastEntry ? lastEntry.task : ''}</td>
+      <td style="font-size:10px;color:#555">${lastEntry ? lastEntry.tech : ''}</td>
     </tr>`;
   }).join('');
 
@@ -4850,7 +4969,7 @@ function exportSchedulePDF(m, y, pdfFilter) {
       <th style="width:30px">Α/Α</th>
       <th>TAG</th>
       <th>ΤΟΠΟΘΕΣΙΑ</th>
-      <th style="text-align:center">ΤΥΠΟΣ</th>
+      <th style="text-align:center;width:90px">ΗΜ. ΕΠ.ΕΛΕΓΧΟΥ</th>
       <th style="text-align:center">ΗΜ.ΕΛΕΓΧΟΥ</th>
       <th style="text-align:center">ΚΑΤΑΣΤΑΣΗ</th>
       <th>ΕΡΓΑΣΙΑ</th>
@@ -4886,53 +5005,123 @@ let currentCylMonth = getCurrentMonthKey();
 // ΝΕΟ ΕΡΓΟ — εγκατάσταση νέων ανιχνευτών πριν μπουν στο κανονικό πρόγραμμα
 // ══════════════════════════════════════════
 const NP_STATUSES = ['ΠΡΟΣ ΕΓΚΑΤΑΣΤΑΣΗ', 'ΕΓΚΑΤΕΣΤΗΜΕΝΟ', 'ΣΕ ΔΟΚΙΜΗ', 'ΕΤΟΙΜΟ ΓΙΑ ΠΑΡΑΔΟΣΗ'];
+const NP_STATUS_DONE = 'ΜΕΤΑΦΕΡΘΗΚΕ ΣΤΟ ΠΡΟΓΡΑΜΜΑ';
+const NP_UNASSIGNED  = '(ΧΩΡΙΣ ΟΝΟΜΑ ΕΡΓΟΥ)';
 const NP_STATUS_COLOR = {
   'ΠΡΟΣ ΕΓΚΑΤΑΣΤΑΣΗ':    'var(--text3)',
   'ΕΓΚΑΤΕΣΤΗΜΕΝΟ':       'var(--blue2)',
   'ΣΕ ΔΟΚΙΜΗ':           'var(--accent2)',
   'ΕΤΟΙΜΟ ΓΙΑ ΠΑΡΑΔΟΣΗ': 'var(--green2)',
+  [NP_STATUS_DONE]:      'var(--cyan2)',
 };
-let currentNpFilter = 'ΟΛΑ';
-let currentNpProjectFilter = 'ΟΛΑ';
+let currentNpFilter  = 'ΟΛΑ';
+let currentNpProject = null;   // null = λίστα έργων · string = μέσα σε συγκεκριμένο έργο
+
+function npProjectKey(it) {
+  const p = (it.project || '').trim();
+  return p || NP_UNASSIGNED;
+}
+function npProjectsList() {
+  return [...new Set(NEWPROJECT_ITEMS.map(npProjectKey))].sort((a,b) => a.localeCompare(b, 'el'));
+}
+function npEsc(s) {
+  return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
 
 function renderNewProject(mc) {
-  const projects = ['ΟΛΑ', ...new Set(NEWPROJECT_ITEMS.map(it => it.project).filter(Boolean))];
-  const filtered = NEWPROJECT_ITEMS.filter(it =>
-    (currentNpFilter === 'ΟΛΑ' || it.status === currentNpFilter) &&
-    (currentNpProjectFilter === 'ΟΛΑ' || it.project === currentNpProjectFilter)
-  );
-  const total = NEWPROJECT_ITEMS.length;
-  const ready = NEWPROJECT_ITEMS.filter(it => it.status === 'ΕΤΟΙΜΟ ΓΙΑ ΠΑΡΑΔΟΣΗ').length;
-  const installed = NEWPROJECT_ITEMS.filter(it => it.status !== 'ΠΡΟΣ ΕΓΚΑΤΑΣΤΑΣΗ').length;
+  if (currentNpProject === null) renderNpProjectList(mc);
+  else renderNpProjectDetail(mc);
+}
+
+// ══ Επίπεδο 1: λίστα έργων ══
+function renderNpProjectList(mc) {
+  const names = npProjectsList();
 
   mc.innerHTML = `
     <div class="page-header">
       <div class="page-title">🚧 ΝΕΟ ΕΡΓΟ</div>
-      <div class="page-sub">Εγκατάσταση νέων ανιχνευτών — ξεχωριστά από το κανονικό πρόγραμμα</div>
+      <div class="page-sub">Έργα εγκατάστασης ανιχνευτών — ξεχωριστά από το κανονικό πρόγραμμα</div>
+    </div>
+
+    <button onclick="showAddNpItemModal()"
+      style="width:100%;margin-bottom:14px;background:var(--cyan);border:none;border-radius:var(--radius);color:var(--on-accent);padding:12px;font-family:var(--cond);font-weight:700;font-size:14px;cursor:pointer">
+      + ΝΕΟ ΕΡΓΟ
+    </button>
+
+    ${names.length ? names.map(name => {
+      const items  = NEWPROJECT_ITEMS.filter(it => npProjectKey(it) === name);
+      const total  = items.length;
+      const done   = items.filter(it => it.status === NP_STATUS_DONE).length;
+      const ready  = items.filter(it => it.status === 'ΕΤΟΙΜΟ ΓΙΑ ΠΑΡΑΔΟΣΗ').length;
+      const active = total - done;
+      return `<div class="card" style="margin-bottom:10px;cursor:pointer" onclick="openNpProject('${npEsc(name)}')">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <div>
+            <div style="font-family:var(--cond);font-weight:700;font-size:16px;color:var(--text1)">📁 ${name}</div>
+            <div style="font-size:12px;color:var(--text3);margin-top:4px">
+              ${active} ενεργοί${ready ? ` · ${ready} έτοιμοι` : ''}${done ? ` · ${done} στο ιστορικό` : ''}
+            </div>
+          </div>
+          <div style="font-size:22px;color:var(--text3);flex-shrink:0">›</div>
+        </div>
+        <div style="height:6px;background:var(--bg3);border-radius:3px;overflow:hidden;margin-top:10px">
+          <div style="height:100%;width:${total?Math.round(done/total*100):0}%;background:var(--green2);border-radius:3px"></div>
+        </div>
+      </div>`;
+    }).join('') : `<div class="empty-state"><div class="empty-icon">🚧</div><div class="empty-text">Δεν υπάρχουν έργα ακόμα — πάτησε "+ ΝΕΟ ΕΡΓΟ"</div></div>`}
+  `;
+}
+
+function openNpProject(name) {
+  currentNpProject = name;
+  currentNpFilter  = 'ΟΛΑ';
+  renderNewProject(document.getElementById('main-content'));
+}
+
+function backToNpProjectList() {
+  currentNpProject = null;
+  renderNewProject(document.getElementById('main-content'));
+}
+
+// ══ Επίπεδο 2: μέσα σε ένα έργο — ζωντανοί ανιχνευτές + ιστορικό όσων μεταφέρθηκαν ══
+function renderNpProjectDetail(mc) {
+  const items    = NEWPROJECT_ITEMS.filter(it => npProjectKey(it) === currentNpProject);
+  const filtered = items.filter(it => currentNpFilter === 'ΟΛΑ' || it.status === currentNpFilter);
+  const total    = items.length;
+  const done     = items.filter(it => it.status === NP_STATUS_DONE).length;
+  const ready    = items.filter(it => it.status === 'ΕΤΟΙΜΟ ΓΙΑ ΠΑΡΑΔΟΣΗ').length;
+  const allStatuses = [...NP_STATUSES, NP_STATUS_DONE];
+
+  mc.innerHTML = `
+    <div class="page-header">
+      <div style="display:flex;align-items:center;gap:8px">
+        <button onclick="backToNpProjectList()" title="Πίσω στα έργα"
+          style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);width:34px;height:34px;font-size:16px;cursor:pointer;flex-shrink:0">‹</button>
+        <div>
+          <div class="page-title">📁 ${currentNpProject}</div>
+          <div class="page-sub">Κατάσταση & ιστορικό ανιχνευτών του έργου</div>
+        </div>
+      </div>
     </div>
 
     <div class="card" style="margin-bottom:12px">
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
-        <span style="font-family:var(--mono);font-size:13px;color:var(--text2)">${installed}/${total} εγκατεστημένα</span>
+        <span style="font-family:var(--mono);font-size:13px;color:var(--text2)">${done}/${total} στο πρόγραμμα</span>
         <span style="font-family:var(--mono);font-size:13px;color:var(--green2)">${ready} έτοιμα για παράδοση</span>
       </div>
       <div style="height:6px;background:var(--bg3);border-radius:3px;overflow:hidden">
-        <div style="height:100%;width:${total?Math.round(installed/total*100):0}%;background:var(--cyan);border-radius:3px"></div>
+        <div style="height:100%;width:${total?Math.round(done/total*100):0}%;background:var(--cyan);border-radius:3px"></div>
       </div>
     </div>
 
-    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
-      <select id="np-project-filter" style="flex:1;min-width:120px;padding:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);font-size:13px"
-        onchange="currentNpProjectFilter=this.value;renderNewProject(document.getElementById('main-content'))">
-        ${projects.map(p => `<option value="${p}" ${currentNpProjectFilter===p?'selected':''}>${p==='ΟΛΑ'?'Όλα τα έργα':p}</option>`).join('')}
-      </select>
-      <button onclick="exportNewProjectPDF(currentNpProjectFilter)"
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <button onclick="exportNewProjectPDF('${npEsc(currentNpProject)}')"
         style="background:var(--blue);border:none;border-radius:var(--radius);color:#fff;padding:8px 12px;font-size:16px;cursor:pointer" title="Εξαγωγή PDF">
         📄
       </button>
-      <button onclick="showAddNpItemModal()"
-        style="background:var(--cyan);border:none;border-radius:var(--radius);color:var(--on-accent);padding:8px 16px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap">
-        + ΝΕΟΣ
+      <button onclick="showAddNpItemModal('${npEsc(currentNpProject)}')"
+        style="flex:1;background:var(--cyan);border:none;border-radius:var(--radius);color:var(--on-accent);padding:8px 16px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap">
+        + ΝΕΟΣ ΑΝΙΧΝΕΥΤΗΣ
       </button>
     </div>
 
@@ -4941,8 +5130,8 @@ function renderNewProject(mc) {
         style="flex-shrink:0;padding:6px 12px;border-radius:16px;font-size:11px;font-family:var(--cond);font-weight:600;cursor:pointer;border:1px solid ${currentNpFilter==='ΟΛΑ'?'var(--cyan)':'var(--border)'};background:${currentNpFilter==='ΟΛΑ'?'var(--badge-cyan-bg)':'var(--bg3)'};color:${currentNpFilter==='ΟΛΑ'?'var(--cyan2)':'var(--text2)'}">
         ΟΛΑ (${total})
       </button>
-      ${NP_STATUSES.map(s => {
-        const count = NEWPROJECT_ITEMS.filter(it => it.status === s).length;
+      ${allStatuses.map(s => {
+        const count = items.filter(it => it.status === s).length;
         const active = currentNpFilter === s;
         return `<button onclick="currentNpFilter='${s}';renderNewProject(document.getElementById('main-content'))"
           style="flex-shrink:0;padding:6px 12px;border-radius:16px;font-size:11px;font-family:var(--cond);font-weight:600;cursor:pointer;border:1px solid ${active?NP_STATUS_COLOR[s]:'var(--border)'};background:${active?'var(--bg3)':'var(--bg2)'};color:${active?NP_STATUS_COLOR[s]:'var(--text3)'}">
@@ -4951,13 +5140,14 @@ function renderNewProject(mc) {
       }).join('')}
     </div>
 
-    ${filtered.length ? filtered.map(it => `
-      <div class="card" style="margin-bottom:10px">
+    ${filtered.length ? filtered.map(it => {
+      const isDone = it.status === NP_STATUS_DONE;
+      return `
+      <div class="card" style="margin-bottom:10px${isDone?';opacity:0.78':''}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
           <div>
             <div style="font-family:var(--mono);font-size:17px;color:var(--text)">${it.tag || '—'}</div>
             <div style="font-size:12px;color:var(--text3);margin-top:2px">${it.location || ''}</div>
-            ${it.project ? `<div style="font-size:11px;color:var(--cyan2);margin-top:4px">📁 ${it.project}</div>` : ''}
           </div>
           <button onclick="deleteNpItem('${it.id}')" title="Διαγραφή"
             style="background:rgba(200,0,0,0.08);border:1px solid var(--red);border-radius:var(--radius);color:var(--red2);width:30px;height:30px;cursor:pointer;font-size:13px;flex-shrink:0">🗑</button>
@@ -4967,6 +5157,7 @@ function renderNewProject(mc) {
           <span class="meta-badge ${it.type==='GAS'?'meta-gas':'meta-fire'}">${it.type}</span>
           ${it.area ? `<span class="meta-badge meta-area">📍 ${it.area}</span>` : ''}
           ${it.category ? `<span class="meta-badge meta-area">${it.category}</span>` : ''}
+          ${it.interval ? `<span class="meta-badge meta-area">🗓 ${it.interval}μ</span>` : ''}
         </div>
 
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:12px;color:var(--text2)">
@@ -4974,6 +5165,10 @@ function renderNewProject(mc) {
           <span>👤 ${it.technician || '—'}</span>
         </div>
 
+        ${isDone ? `
+        <div style="width:100%;margin-top:10px;padding:9px;background:var(--bg3);border:1px solid ${NP_STATUS_COLOR[NP_STATUS_DONE]};border-radius:var(--radius);color:${NP_STATUS_COLOR[NP_STATUS_DONE]};font-family:var(--cond);font-weight:600;font-size:12px;text-align:center">
+          ✓ ΣΤΟ ΠΡΟΓΡΑΜΜΑ${it.promotedDate ? ' — ' + formatDate(it.promotedDate) : ''}
+        </div>` : `
         <select onchange="setNpStatus('${it.id}',this.value)"
           style="width:100%;margin-top:10px;padding:9px;background:var(--bg3);border:1px solid ${NP_STATUS_COLOR[it.status]};border-radius:var(--radius);color:${NP_STATUS_COLOR[it.status]};font-family:var(--cond);font-weight:600;font-size:12px">
           ${NP_STATUSES.map(s => `<option value="${s}" ${it.status===s?'selected':''}>${s}</option>`).join('')}
@@ -4984,25 +5179,29 @@ function renderNewProject(mc) {
           style="width:100%;margin-top:8px;background:var(--green);border:none;border-radius:var(--radius);color:var(--bg);padding:11px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer">
           ✓ ΜΕΤΑΦΟΡΑ ΣΤΟ ΠΡΟΓΡΑΜΜΑ
         </button>` : ''}
+        `}
       </div>
-    `).join('') : `<div class="empty-state"><div class="empty-icon">🚧</div><div class="empty-text">Δεν υπάρχουν ανιχνευτές έργου σε αυτό το φίλτρο</div></div>`}
+    `;}).join('') : `<div class="empty-state"><div class="empty-icon">🚧</div><div class="empty-text">Δεν υπάρχουν ανιχνευτές σε αυτό το φίλτρο</div></div>`}
   `;
 }
 
-function showAddNpItemModal() {
+function showAddNpItemModal(presetProject) {
   if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα','error'); return; }
+  const locked = !!presetProject;
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay open';
   overlay.id = 'addnp-overlay';
   overlay.innerHTML = `
     <div class="modal-box" style="max-width:400px;text-align:left;max-height:90vh;overflow-y:auto">
-      <div class="modal-title" style="margin-bottom:16px">🚧 Νέος Ανιχνευτής Έργου</div>
+      <div class="modal-title" style="margin-bottom:16px">🚧 ${locked ? 'Νέος Ανιχνευτής Έργου' : 'Νέο Έργο'}</div>
+
+      <label class="field-label">ΟΝΟΜΑ ΕΡΓΟΥ *</label>
+      <input type="text" class="field-input" id="np-project" placeholder="π.χ. ΛΙΜΑΝΙ 2026"
+        value="${locked ? presetProject.replace(/"/g,'&quot;') : ''}" ${locked ? 'readonly' : ''}
+        style="margin-bottom:10px${locked?';opacity:.65':''}">
 
       <label class="field-label">TAG *</label>
       <input type="text" class="field-input" id="np-tag" placeholder="π.χ. 44-GD-099" style="margin-bottom:10px">
-
-      <label class="field-label">ΚΩΔΙΚΟΣ/ΟΝΟΜΑ ΕΡΓΟΥ</label>
-      <input type="text" class="field-input" id="np-project" placeholder="π.χ. EXPANSION-2026" style="margin-bottom:10px">
 
       <label class="field-label">ΤΟΠΟΘΕΣΙΑ</label>
       <input type="text" class="field-input" id="np-loc" placeholder="π.χ. C3 Unit - Area 44" style="margin-bottom:10px">
@@ -5023,6 +5222,15 @@ function showAddNpItemModal() {
         ${DET_CATEGORIES.map(c=>`<option value="${c}">${c}</option>`).join('')}
       </select>
 
+      <label class="field-label">ΔΙΑΣΤΗΜΑ ΒΑΘΜΟΝΟΜΗΣΗΣ</label>
+      <select class="field-input" id="np-interval" style="margin-bottom:10px">
+        <option value="">Από κατηγορία (default)</option>
+        <option value="2">2 μήνες</option>
+        <option value="4" selected>4 μήνες</option>
+        <option value="6">6 μήνες</option>
+        <option value="12">12 μήνες</option>
+      </select>
+
       <label class="field-label">ΗΜ. ΕΓΚΑΤΑΣΤΑΣΗΣ</label>
       <div style="margin-bottom:10px">${dateMaskInputHTML('np-installdate', new Date().toISOString().split('T')[0], "v => {}", 'width:100%;padding:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);font-family:var(--mono);font-size:14px;box-sizing:border-box')}</div>
 
@@ -5037,13 +5245,15 @@ function showAddNpItemModal() {
     </div>
   `;
   document.body.appendChild(overlay);
-  setTimeout(() => document.getElementById('np-tag')?.focus(), 100);
+  setTimeout(() => document.getElementById(locked ? 'np-tag' : 'np-project')?.focus(), 100);
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 }
 
 function submitNewNpItem() {
-  const tag    = document.getElementById('np-tag').value.trim().toUpperCase();
-  const errEl  = document.getElementById('np-error');
+  const project = document.getElementById('np-project').value.trim();
+  const tag     = document.getElementById('np-tag').value.trim().toUpperCase();
+  const errEl   = document.getElementById('np-error');
+  if (!project) { errEl.textContent='Το όνομα έργου είναι υποχρεωτικό'; errEl.style.display='block'; return; }
   if (!tag) { errEl.textContent='Το TAG είναι υποχρεωτικό'; errEl.style.display='block'; return; }
   if (DETECTORS.find(d=>d.tag===tag) || NEWPROJECT_ITEMS.find(it=>it.tag===tag)) {
     errEl.textContent=`Το TAG ${tag} υπάρχει ήδη`; errEl.style.display='block'; return;
@@ -5052,11 +5262,12 @@ function submitNewNpItem() {
   const item = {
     id: 'np_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
     tag,
-    project:     document.getElementById('np-project').value.trim(),
+    project,
     location:    document.getElementById('np-loc').value.trim(),
     area:        document.getElementById('np-area').value,
     type:        document.getElementById('np-type').value,
     category:    document.getElementById('np-cat').value,
+    interval:    document.getElementById('np-interval').value ? parseInt(document.getElementById('np-interval').value, 10) : null,
     installDate: document.getElementById('np-installdate__hidden').value,
     technician:  document.getElementById('np-tech').value.trim(),
     status:      'ΠΡΟΣ ΕΓΚΑΤΑΣΤΑΣΗ',
@@ -5067,7 +5278,9 @@ function submitNewNpItem() {
   gsSaveNewProjectItem(item);
 
   document.getElementById('addnp-overlay').remove();
-  showToast(`✓ ${tag} προστέθηκε στο έργο`);
+  showToast(`✓ ${tag} προστέθηκε στο έργο "${project}"`);
+  currentNpProject = project;
+  currentNpFilter  = 'ΟΛΑ';
   renderNewProject(document.getElementById('main-content'));
 }
 
@@ -5095,40 +5308,36 @@ function deleteNpItem(id) {
   renderNewProject(document.getElementById('main-content'));
 }
 
-// Μεταφέρει τον ανιχνευτή έργου στο κανονικό πρόγραμμα συντήρησης:
-// δημιουργεί πλήρη DETECTORS εγγραφή (nextCalDate = ημ. εγκατάστασης + interval
-// κατηγορίας) και τον αφαιρεί από τη λίστα έργου — local + Sheet, μία ενέργεια.
+// Μεταφέρει τον ανιχνευτή έργου στο κανονικό πρόγραμμα συντήρησης (νέα DETECTORS
+// εγγραφή, nextCalDate = ημ. εγκατάστασης + interval) — ΠΑΡΑΜΕΝΕΙ στο έργο σαν
+// μόνιμο ιστορικό με status ΜΕΤΑΦΕΡΘΗΚΕ ΣΤΟ ΠΡΟΓΡΑΜΜΑ + ημερομηνία μεταφοράς.
 function promoteNpItem(id) {
   const it = NEWPROJECT_ITEMS.find(x => String(x.id) === String(id));
   if (!it) return;
+  if (it.status === NP_STATUS_DONE) return;
   if (!confirm(`Μεταφορά του ${it.tag} στο κανονικό πρόγραμμα συντήρησης;`)) return;
 
-  const interval = CAL_INTERVALS[it.category] || CAL_INTERVALS['DEFAULT'];
+  const interval = it.interval || CAL_INTERVALS[it.category] || CAL_INTERVALS['DEFAULT'];
   const baseDate = it.installDate ? new Date(it.installDate) : new Date();
   const nextDate = new Date(baseDate);
   nextDate.setMonth(nextDate.getMonth() + interval);
   const nextCalDate = nextDate.toISOString().split('T')[0];
 
-  DETECTORS.push({
+  const newDet = {
     tag: it.tag,
     description: it.project ? ('Έργο: ' + it.project) : '',
     location: it.location, type: it.type, area: it.area,
-    category: it.category, calInterval: null,
+    category: it.category, calInterval: it.interval || null,
     nextCalDate, entries: []
-  });
+  };
+  DETECTORS.push(newDet);
   saveDetectors();
+  gsSaveDetector({ ...newDet, calInterval: it.interval || '' });
 
-  NEWPROJECT_ITEMS = NEWPROJECT_ITEMS.filter(x => String(x.id) !== String(id));
+  it.status = NP_STATUS_DONE;
+  it.promotedDate = new Date().toISOString().split('T')[0];
   saveNewProjectItems();
-  if (!DELETED_NP_IDS.includes(String(id))) DELETED_NP_IDS.push(String(id));
-  saveDeletedNpIds();
-
-  gsPromoteNewProjectItem({ ...it, calInterval: '', nextCalDate }).then(ok => {
-    if (ok) {
-      DELETED_NP_IDS = DELETED_NP_IDS.filter(x => x !== String(id));
-      saveDeletedNpIds();
-    }
-  });
+  gsUpdateNewProjectItem(it);
 
   showToast(`✓ ${it.tag} μεταφέρθηκε στο κανονικό πρόγραμμα`);
   renderNewProject(document.getElementById('main-content'));
@@ -5142,6 +5351,7 @@ function exportNewProjectPDF(projectFilter) {
     : NEWPROJECT_ITEMS.filter(it => it.project === projectFilter);
 
   const total     = items.length;
+  const done       = items.filter(it => it.status === NP_STATUS_DONE).length;
   const ready      = items.filter(it => it.status === 'ΕΤΟΙΜΟ ΓΙΑ ΠΑΡΑΔΟΣΗ').length;
   const installed  = items.filter(it => it.status === 'ΕΓΚΑΤΕΣΤΗΜΕΝΟ').length;
   const testing    = items.filter(it => it.status === 'ΣΕ ΔΟΚΙΜΗ').length;
@@ -5152,16 +5362,19 @@ function exportNewProjectPDF(projectFilter) {
     'ΕΓΚΑΤΕΣΤΗΜΕΝΟ':       '#e0ecf8',
     'ΣΕ ΔΟΚΙΜΗ':           '#fde8d8',
     'ΕΤΟΙΜΟ ΓΙΑ ΠΑΡΑΔΟΣΗ': '#e0f4e8',
+    [NP_STATUS_DONE]:      '#dde6f0',
   };
   const STATUS_FG = {
     'ΠΡΟΣ ΕΓΚΑΤΑΣΤΑΣΗ':    '#555',
     'ΕΓΚΑΤΕΣΤΗΜΕΝΟ':       '#0a3a70',
     'ΣΕ ΔΟΚΙΜΗ':           '#9a5210',
     'ΕΤΟΙΜΟ ΓΙΑ ΠΑΡΑΔΟΣΗ': '#0a4a20',
+    [NP_STATUS_DONE]:      '#1a3a5a',
   };
 
-  // Ομαδοποίηση ανά status, σταθερή σειρά (ΠΡΟΣ ΕΓΚΑΤΑΣΤΑΣΗ πρώτα, ΕΤΟΙΜΟ τελευταία)
-  const ordered = [...items].sort((a,b) => NP_STATUSES.indexOf(a.status) - NP_STATUSES.indexOf(b.status));
+  // Ομαδοποίηση ανά status, σταθερή σειρά (ΠΡΟΣ ΕΓΚΑΤΑΣΤΑΣΗ πρώτα, ΜΕΤΑΦΕΡΘΗΚΕ τελευταία)
+  const STATUS_ORDER = [...NP_STATUSES, NP_STATUS_DONE];
+  const ordered = [...items].sort((a,b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status));
 
   const rows = ordered.map((it, i) => `
     <tr>
@@ -5221,6 +5434,7 @@ function exportNewProjectPDF(projectFilter) {
   <div class="kpi" style="background:#e0ecf8"><div class="num" style="color:#0a3a70">${installed}</div><div class="lbl" style="color:#0a3a70">ΕΓΚΑΤΕΣΤΗΜΕΝΑ</div></div>
   <div class="kpi" style="background:#fde8d8"><div class="num" style="color:#9a5210">${testing}</div><div class="lbl" style="color:#9a5210">ΣΕ ΔΟΚΙΜΗ</div></div>
   <div class="kpi" style="background:#e0f4e8"><div class="num" style="color:#0a4a20">${ready}</div><div class="lbl" style="color:#0a4a20">ΕΤΟΙΜΑ</div></div>
+  <div class="kpi" style="background:#dde6f0"><div class="num" style="color:#1a3a5a">${done}</div><div class="lbl" style="color:#1a3a5a">ΣΤΟ ΠΡΟΓΡΑΜΜΑ</div></div>
 </div>
 
 <table>
