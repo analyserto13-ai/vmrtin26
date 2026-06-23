@@ -852,7 +852,16 @@ body {
   padding: 24px;
 }
 
-.modal-overlay.open { display: flex; }
+.modal-overlay.open { display: flex; animation: modalOverlayIn 0.18s ease; }
+
+@keyframes modalOverlayIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes modalBoxIn {
+  from { opacity: 0; transform: translateY(14px) scale(0.94); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
 
 .modal-box {
   background: var(--bg2);
@@ -862,6 +871,7 @@ body {
   width: 100%;
   max-width: 360px;
   text-align: center;
+  animation: modalBoxIn 0.22s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .modal-title {
@@ -869,6 +879,24 @@ body {
   font-size: 18px;
   font-weight: 700;
   margin-bottom: 8px;
+}
+
+/* ══ ANIMATIONS — σελίδες & λίστες ══ */
+@keyframes pageFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+#main-content.page-anim { animation: pageFadeIn 0.28s ease; }
+
+@keyframes itemFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.card, .detector-item, .history-entry, .bar-row {
+  animation: itemFadeIn 0.3s ease backwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-delay: 0s !important; }
 }
 
 .modal-sub {
@@ -2600,6 +2628,12 @@ function showPage(page) {
   if (navEl) navEl.classList.add('active');
   const mc = document.getElementById('main-content');
 
+  // Reflow trick: αφαίρεση/προσθήκη της κλάσης ώστε το CSS animation να ξαναπαίξει
+  // σε κάθε αλλαγή σελίδας (αλλιώς παίζει μόνο την πρώτη φορά που μπαίνει στο DOM).
+  mc.classList.remove('page-anim');
+  void mc.offsetWidth;
+  mc.classList.add('page-anim');
+
   if (page === 'dashboard') renderDashboard(mc);
   else if (page === 'detectors') renderDetectors(mc);
   else if (page === 'detector-detail') renderDetectorDetail(mc);
@@ -2611,6 +2645,17 @@ function showPage(page) {
   else if (page === 'newproject') { currentNpProject = null; renderNewProject(mc); }
 
   mc.scrollTop = 0;
+  animateListEntrance(mc);
+}
+
+// Δίνει σταδιακή καθυστέρηση (σε σειρά DOM, άρα σωστή σειρά εμφάνισης) σε κάρτες/
+// γραμμές λίστας ώστε να εμφανίζονται μία-μία αντί όλες μαζί. Καλείται μετά από
+// κάθε render στο showPage() — δεν αγγίζει τα μικρο-re-renders (φίλτρα, κλπ).
+function animateListEntrance(container) {
+  const items = container.querySelectorAll('.card, .detector-item, .history-entry, .bar-row');
+  items.forEach((el, i) => {
+    el.style.animationDelay = Math.min(i * 28, 280) + 'ms';
+  });
 }
 
 // ══ DASHBOARD ══
