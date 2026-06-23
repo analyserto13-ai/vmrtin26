@@ -1444,6 +1444,13 @@ const getArea = tag => {
 
 // Ξεκινάει κενό — γεμίζει από Import Excel ή Google Sheets sync
 let DETECTORS = [];
+// Tombstones: tags ανιχνευτών που διαγράφηκαν ολοκληρωτικά τοπικά αλλά ίσως δεν
+// έχουν ακόμα επιβεβαιωθεί ως διαγραμμένα στο Sheet (offline, ή race με sync).
+// Χωρίς αυτό, το syncFromSheets() θα τους ξανάφερνε από το Sheet σαν "καινούργιους".
+let DELETED_DET_TAGS = JSON.parse(localStorage.getItem('vmrtin26_deleted_det_tags') || '[]');
+function saveDeletedDetTags() {
+  localStorage.setItem('vmrtin26_deleted_det_tags', JSON.stringify(DELETED_DET_TAGS));
+}
 // CYLINDERS: { id, monthKey, num, cylNo, company, gas, expDate, status }
 // monthKey = 'YYYY-MM'
 let CYLINDERS = JSON.parse(localStorage.getItem('vmrtin26_cylinders') || '[]');
@@ -1646,8 +1653,10 @@ async function syncFromSheets() {
     // Load detectors
     const detRes = await gsGet({ action: 'getDetectors' });
     if (detRes.detectors && detRes.detectors.length > 0) {
+      const sheetDetTags = new Set(detRes.detectors.map(r => r.tag));
       // Merge with local — remote wins for metadata
       for (const remote of detRes.detectors) {
+        if (DELETED_DET_TAGS.includes(remote.tag)) continue; // tombstoned — μη το ξαναφέρεις
         let local = DETECTORS.find(d => d.tag === remote.tag);
         if (local) {
           local.description = remote.description || local.description;
@@ -1661,6 +1670,15 @@ async function syncFromSheets() {
           DETECTORS.push({ ...remote, entries: [] });
         }
       }
+      // Ξαναστείλε delete για tombstones που το Sheet δεν έχει ακόμα σβήσει
+      DELETED_DET_TAGS
+        .filter(tag => sheetDetTags.has(tag))
+        .forEach(tag => gsDeleteDetector({ tag }).then(ok => {
+          if (ok) {
+            DELETED_DET_TAGS = DELETED_DET_TAGS.filter(x => x !== tag);
+            saveDeletedDetTags();
+          }
+        }));
     }
 
     // Load all entries
@@ -1840,6 +1858,31 @@ async function gsUpdateDetector(data) {
     await gsPost({ action: 'updateDetector', data });
   } catch(err) {
     console.error('Update detector error:', err);
+  }
+}
+
+// ΝΕΑ actions — χρειάζονται handler στο Code.gs (renameDetector/deleteDetector).
+async function gsRenameDetector(data) {
+  if (!gsConnected) return false;
+  try {
+    await gsPost({ action: 'renameDetector', data });
+    return true;
+  } catch(err) {
+    console.error('gsRenameDetector error:', err);
+    showToast('⚠ Μετονομάστηκε τοπικά — δεν έφτασε στο Sheet', 'error');
+    return false;
+  }
+}
+
+async function gsDeleteDetector(data) {
+  if (!gsConnected) return false;
+  try {
+    await gsPost({ action: 'deleteDetector', data });
+    return true;
+  } catch(err) {
+    console.error('gsDeleteDetector error:', err);
+    showToast('⚠ Διαγράφηκε τοπικά — δεν έφτασε στο Sheet', 'error');
+    return false;
   }
 }
 
@@ -2439,6 +2482,7 @@ async function initPasswords() {
 let currentUser = null;
 let currentPage = null;
 let selectedDetector = null;
+let detectorDetailOrigin = 'detectors'; // από ποια σελίδα μπήκαμε στο detail — εκεί γυρνάει το "←"
 let selectedTasks = [];
 
 // Load on startup
@@ -2780,7 +2824,10 @@ function renderDashboard(mc) {
     </div>
 
     <div class="card">
-      <div class="card-title">ΤΕΛΕΥΤΑΙΕΣ ΕΓΓΡΑΦΕΣ</div>
+      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="showRecentActivityLog()">
+        <span>ΤΕΛΕΥΤΑΙΕΣ ΕΓΓΡΑΦΕΣ</span>
+        <span style="font-size:9px;color:var(--accent);font-family:var(--cond);font-weight:600">▶ ΟΛΕΣ (30 ΗΜΕΡΕΣ)</span>
+      </div>
       ${recent.length ? recent.map(e => `
         <div class="history-entry" onclick="openDetector('${e.tag}')" style="cursor:pointer">
           <div class="hist-date">${formatDate(e.date)}</div>
@@ -2862,8 +2909,24 @@ function renderDetectorList() {
 }
 
 function openDetector(tag) {
+  if (currentPage && currentPage !== 'detector-detail') {
+    detectorDetailOrigin = currentPage;
+  }
   selectedDetector = DETECTORS.find(d => d.tag === tag);
   showPage('detector-detail');
+}
+
+function getPageBackLabel(page) {
+  switch (page) {
+    case 'dashboard':  return t('dash-title');
+    case 'detectors':  return t('det-title');
+    case 'schedule':   return 'ΠΡΟΓΡΑΜΜΑ';
+    case 'cylinders':  return 'ΦΙΑΛΕΣ';
+    case 'newproject': return 'ΝΕΟ ΕΡΓΟ';
+    case 'stats':      return t('stats-title');
+    case 'admin':      return t('admin-title');
+    default:           return t('det-title');
+  }
 }
 
 function renderDetectorDetail(mc) {
@@ -2882,9 +2945,20 @@ function renderDetectorDetail(mc) {
                      status === 'ok'      ? `✓ Εντός προγράμματος` : '— Δεν υπάρχει ημερομηνία';
 
   mc.innerHTML = `
-    <button class="back-btn" onclick="showPage('detectors')">← ${t('det-title')}</button>
+    <button class="back-btn" onclick="showPage(detectorDetailOrigin)">← ${getPageBackLabel(detectorDetailOrigin)}</button>
     <div class="detail-header">
-      <div class="detail-tag">${d.tag}</div>
+    <div class="detail-tag" id="tag-display-${d.tag}" style="display:flex;align-items:center;gap:8px">
+      <span>${d.tag}</span>
+      ${ROLES[currentUser.role].canAdmin ? `<button onclick="startEditTag('${d.tag}')" title="Μετονομασία ανιχνευτή" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--text3);padding:0">✏️</button>` : ''}
+    </div>
+    ${ROLES[currentUser.role].canAdmin ? `
+    <div style="display:none;align-items:center;gap:6px;margin:2px 0 8px 0" id="tag-edit-${d.tag}">
+      <input id="tag-input-${d.tag}" type="text" value="${d.tag}" style="font-size:15px;font-family:var(--mono);padding:4px 8px;border:1px solid var(--accent);border-radius:6px;background:var(--bg3);color:var(--text1);width:160px;text-transform:uppercase"
+        onkeydown="if(event.key==='Enter')saveTagRename('${d.tag}');if(event.key==='Escape')cancelEditTag('${d.tag}')">
+      <button onclick="saveTagRename('${d.tag}')" style="background:var(--green);color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;font-family:var(--cond);font-weight:700">✓</button>
+      <button onclick="cancelEditTag('${d.tag}')" style="background:var(--bg4);color:var(--text2);border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">✕</button>
+    </div>
+    ` : ''}
       ${ROLES[currentUser.role].canAdmin ? `
       <div style="display:flex;align-items:center;gap:6px;margin:6px 0 2px 0" id="loc-display-${d.tag}">
         <span style="font-size:13px;color:var(--text2);font-family:var(--mono)">${d.location || '<span style="color:var(--text3);font-style:italic">— χωρίς τοποθεσία —</span>'}</span>
@@ -2975,6 +3049,16 @@ function renderDetectorDetail(mc) {
         ${e.notes ? `<div class="hist-tech" style="margin-top:4px;font-style:italic">💬 ${e.notes}</div>` : ''}
       </div>
     `).join('') : `<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">${t('no-hist')}</div></div>`}
+
+    ${ROLES[currentUser.role].canAdmin ? `
+    <div style="margin-top:24px;padding-top:14px;border-top:1px solid var(--border)">
+      <div style="font-size:10px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.5px;margin-bottom:8px">⚠ ΕΠΙΚΙΝΔΥΝΗ ΕΝΕΡΓΕΙΑ</div>
+      <button onclick="deleteDetectorCompletely('${d.tag}')"
+        style="width:100%;background:rgba(200,0,0,0.08);border:1px solid var(--red);border-radius:var(--radius);color:var(--red2);padding:11px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer">
+        🗑 ΔΙΑΓΡΑΦΗ ΑΝΙΧΝΕΥΤΗ ΟΛΟΚΛΗΡΩΤΙΚΑ
+      </button>
+    </div>
+    ` : ''}
   `;
 }
 
@@ -3187,6 +3271,61 @@ function saveLocation(tag) {
   gsUpdateDetector({ tag, location: val });
   showToast('✓ Τοποθεσία → ' + (val || '(άδειο)'));
   renderDetectorDetail(document.getElementById('main-content'));
+}
+
+// ── Μετονομασία tag ανιχνευτή (admin only) ──
+function startEditTag(tag) {
+  document.getElementById('tag-display-' + tag).style.display = 'none';
+  const editDiv = document.getElementById('tag-edit-' + tag);
+  editDiv.style.display = 'flex';
+  document.getElementById('tag-input-' + tag).focus();
+}
+
+function cancelEditTag(tag) {
+  document.getElementById('tag-edit-' + tag).style.display = 'none';
+  document.getElementById('tag-display-' + tag).style.display = 'flex';
+}
+
+function saveTagRename(oldTag) {
+  const newTag = document.getElementById('tag-input-' + oldTag).value.trim().toUpperCase();
+  if (!newTag) { showToast('Το tag δεν μπορεί να είναι άδειο', 'error'); return; }
+  if (newTag === oldTag) { cancelEditTag(oldTag); return; }
+  if (DETECTORS.some(d => d.tag === newTag)) { showToast(`Το tag ${newTag} υπάρχει ήδη`, 'error'); return; }
+  if (!confirm(`Μετονομασία ${oldTag} → ${newTag};\n\nΠΡΟΣΟΧΗ: τυπωμένα QR codes με το παλιό tag θα πάψουν να βρίσκουν τον ανιχνευτή — θα χρειαστείς νέο QR.\nΤο ιστορικό μεταφέρεται κανονικά στο νέο tag.\n\nΣυνέχεια;`)) return;
+
+  const det = DETECTORS.find(d => d.tag === oldTag);
+  if (!det) return;
+  det.tag = newTag;
+  saveDetectors();
+  if (selectedDetector && selectedDetector.tag === oldTag) selectedDetector = det;
+  gsRenameDetector({ oldTag, newTag });
+
+  showToast(`✓ Μετονομάστηκε σε ${newTag}`);
+  renderDetectorDetail(document.getElementById('main-content'));
+}
+
+// ── Ολοκληρωτική διαγραφή ανιχνευτή + ιστορικού (admin only) ──
+function deleteDetectorCompletely(tag) {
+  const det = DETECTORS.find(d => d.tag === tag);
+  if (!det) return;
+  const entCount = det.entries.length;
+  if (!confirm(`ΟΛΟΚΛΗΡΩΤΙΚΗ διαγραφή του ${tag};\n\nΘα χαθούν ο ανιχνευτής ΚΑΙ ${entCount} εγγραφές ιστορικού του — τοπικά και στο Google Sheet.\nΗ ενέργεια είναι ΜΗ ΑΝΑΣΤΡΕΨΙΜΗ.\n\nΣυνέχεια;`)) return;
+  if (!confirm(`Είσαι σίγουρος; Διαγραφή ${tag} — δεύτερη επιβεβαίωση.`)) return;
+
+  DETECTORS = DETECTORS.filter(d => d.tag !== tag);
+  if (!DELETED_DET_TAGS.includes(tag)) DELETED_DET_TAGS.push(tag);
+  saveDeletedDetTags();
+  saveDetectors();
+
+  gsDeleteDetector({ tag }).then(ok => {
+    if (ok) {
+      DELETED_DET_TAGS = DELETED_DET_TAGS.filter(x => x !== tag);
+      saveDeletedDetTags();
+    }
+  });
+
+  showToast(`✓ Ο ${tag} διαγράφηκε ολοκληρωτικά`);
+  showPage(detectorDetailOrigin);
 }
 
 function showQRModal(tag) {
@@ -4507,6 +4646,51 @@ function showKpiList(filter) {
 
 
 
+// Πλήρες ιστορικό αλλαγών (όλοι οι ανιχνευτές) τις τελευταίες 30 μέρες — άνοιγμα
+// από το "▶ ΟΛΕΣ (30 ΗΜΕΡΕΣ)" στην κάρτα ΤΕΛΕΥΤΑΙΕΣ ΕΓΓΡΑΦΕΣ του dashboard.
+function showRecentActivityLog() {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 30);
+  const cutoffStr = cutoff.toISOString().split('T')[0];
+
+  const allEntries = [];
+  DETECTORS.forEach(d => d.entries.forEach(e => {
+    if (e.date >= cutoffStr) allEntries.push({ ...e, tag: d.tag, loc: d.location || d.area });
+  }));
+  allEntries.sort((a,b) => b.date.localeCompare(a.date));
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay open';
+  overlay.id = 'activity-log-overlay';
+  overlay.style.cssText = 'align-items:flex-start;padding:0;overflow-y:auto;';
+
+  overlay.innerHTML = `
+    <div style="background:var(--bg2);width:100%;min-height:100vh;max-width:680px;margin:0 auto;padding:16px 16px 80px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding-top:8px">
+        <button onclick="document.getElementById('activity-log-overlay').remove()"
+          style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text2);padding:6px 12px;cursor:pointer;font-family:var(--font);font-size:14px">
+          ← Πίσω
+        </button>
+        <div>
+          <div style="font-family:var(--cond);font-size:18px;font-weight:700;color:var(--accent)">📋 ΑΛΛΑΓΕΣ ΤΕΛΕΥΤΑΙΩΝ 30 ΗΜΕΡΩΝ</div>
+          <div style="font-size:12px;color:var(--text3)">${allEntries.length} εγγραφές</div>
+        </div>
+      </div>
+      ${allEntries.length === 0 ? `
+        <div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">Καμία εγγραφή τις τελευταίες 30 μέρες</div></div>
+      ` : allEntries.map(e => `
+        <div class="history-entry" onclick="document.getElementById('activity-log-overlay').remove();openDetector('${e.tag}')" style="cursor:pointer">
+          <div class="hist-date">📅 ${formatDate(e.date)}</div>
+          <div class="hist-task">🔧 ${e.task} <span style="font-family:var(--mono);font-size:12px;color:var(--accent)">${e.tag}</span></div>
+          <div class="hist-tech">👤 ${e.tech || '—'}${e.loc ? ' · ' + e.loc : ''}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.scrollTop = 0;
+}
+
 // Global Escape key — κλείνει οποιοδήποτε overlay
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
@@ -4514,6 +4698,28 @@ document.addEventListener('keydown', function(e) {
     if (overlays.length > 0) {
       overlays[overlays.length - 1].remove();
     }
+  }
+});
+
+// ── Κουμπί "πίσω" του browser/Android: ρωτάει πριν βγάλει από την εφαρμογή ──
+// Αν είναι ανοιχτό κάποιο modal/overlay, το "πίσω" το κλείνει αυτό πρώτα
+// (σαν το Escape παραπάνω) αντί να ρωτήσει αμέσως για έξοδο από όλη την εφαρμογή.
+let vmrtinAllowExit = false;
+history.pushState({ vmrtin: true }, '', location.href);
+window.addEventListener('popstate', function() {
+  if (vmrtinAllowExit) return;
+
+  const overlays = document.querySelectorAll('.modal-overlay.open');
+  if (overlays.length > 0) {
+    overlays[overlays.length - 1].remove();
+    history.pushState({ vmrtin: true }, '', location.href);
+    return;
+  }
+
+  history.pushState({ vmrtin: true }, '', location.href);
+  if (confirm('Θέλεις να βγεις από την εφαρμογή VMRTIN26;')) {
+    vmrtinAllowExit = true;
+    history.back();
   }
 });
 
