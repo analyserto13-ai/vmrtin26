@@ -1451,6 +1451,43 @@ let DELETED_DET_TAGS = JSON.parse(localStorage.getItem('vmrtin26_deleted_det_tag
 function saveDeletedDetTags() {
   localStorage.setItem('vmrtin26_deleted_det_tags', JSON.stringify(DELETED_DET_TAGS));
 }
+
+// ════════════════════════════════════════
+// PENDING QUEUE — μετονομασίες & εγγραφές που δεν έφτασαν στο Sheet (offline)
+// Ίδια λογική με τα tombstones πιο πάνω: αποθηκεύονται τοπικά και ξαναστέλνονται
+// αυτόματα στην αρχή του επόμενου syncFromSheets(). Χωρίς αυτό, μετονομασίες
+// θα έμεναν για πάντα ασυγχρόνιστες, και νέες/τροποποιημένες εγγραφές θα
+// χάνονταν σιωπηλά στο destructive rebuild του ENTRIES μέσα στο sync.
+// ════════════════════════════════════════
+let PENDING_RENAMES = JSON.parse(localStorage.getItem('vmrtin26_pending_renames') || '[]');
+function savePendingRenames() {
+  localStorage.setItem('vmrtin26_pending_renames', JSON.stringify(PENDING_RENAMES));
+}
+function queuePendingRename(data) {
+  PENDING_RENAMES = PENDING_RENAMES.filter(r => r.oldTag !== data.oldTag);
+  PENDING_RENAMES.push({ oldTag: data.oldTag, newTag: data.newTag });
+  savePendingRenames();
+}
+function clearPendingRename(oldTag) {
+  const before = PENDING_RENAMES.length;
+  PENDING_RENAMES = PENDING_RENAMES.filter(r => r.oldTag !== oldTag);
+  if (PENDING_RENAMES.length !== before) savePendingRenames();
+}
+
+let PENDING_ENTRIES = JSON.parse(localStorage.getItem('vmrtin26_pending_entries') || '[]');
+function savePendingEntries() {
+  localStorage.setItem('vmrtin26_pending_entries', JSON.stringify(PENDING_ENTRIES));
+}
+function queuePendingEntry(action, data) {
+  const id = 'pe_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+  PENDING_ENTRIES.push({ id, action, data });
+  savePendingEntries();
+  return id;
+}
+function pendingChangesCount() {
+  return PENDING_RENAMES.length + PENDING_ENTRIES.length;
+}
+
 // CYLINDERS: { id, monthKey, num, cylNo, company, gas, expDate, status }
 // monthKey = 'YYYY-MM'
 let CYLINDERS = JSON.parse(localStorage.getItem('vmrtin26_cylinders') || '[]');
@@ -1640,7 +1677,45 @@ async function gsPost(data) {
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error('HTTP ' + res.status);
-  return res.json();
+  const json = await res.json();
+  // ΚΡΙΣΙΜΟ: το Apps Script απαντάει με HTTP 200 ΚΑΙ όταν αποτυγχάνει εσωτερικά
+  // (π.χ. "Unknown action" από παλιό deployment, ή exception στο backend) — απλά
+  // βάζει { error: "..." } στο σώμα. Χωρίς αυτό το throw, ΚΑΘΕ wrapper πιο κάτω
+  // (gsDeleteDetector, gsDeleteCylinder, κλπ.) θα έβλεπε επιτυχία (δεν έσκασε
+  // exception) και θα καθάριζε tombstones/pending entries ΠΑΡΟΛΟ που η αλλαγή
+  // ποτέ δεν εφαρμόστηκε όντως στο Sheet — που είναι ακριβώς πώς αναστήθηκαν
+  // οι φιάλες και οι ανιχνευτές που είχαν σβηστεί.
+  if (json && json.error) throw new Error(json.error);
+  return json;
+}
+
+// ── Ξαναστέλνει pending renames/entries πριν τραβήξουμε δεδομένα ──
+// Αν η σύνδεση δουλεύει ξανά, αυτές οι αλλαγές φτάνουν στο Sheet ΠΡΙΝ τα
+// getDetectors/getAllEntries πιο κάτω, ώστε να μη χαθούν στο destructive
+// rebuild του ENTRIES. Best-effort: ό,τι αποτύχει ξαναμπαίνει στην ουρά για
+// τον επόμενο συγχρονισμό.
+async function flushPendingChanges() {
+  if (PENDING_RENAMES.length > 0) {
+    for (const r of [...PENDING_RENAMES]) {
+      try {
+        await gsPost({ action: 'renameDetector', data: r });
+        clearPendingRename(r.oldTag);
+      } catch(err) {
+        console.error('Flush rename αποτυχία, παραμένει στην ουρά:', r, err);
+      }
+    }
+  }
+  if (PENDING_ENTRIES.length > 0) {
+    for (const pe of [...PENDING_ENTRIES]) {
+      try {
+        await gsPost({ action: pe.action, data: pe.data });
+        PENDING_ENTRIES = PENDING_ENTRIES.filter(x => x.id !== pe.id);
+        savePendingEntries();
+      } catch(err) {
+        console.error('Flush entry αποτυχία, παραμένει στην ουρά:', pe, err);
+      }
+    }
+  }
 }
 
 // ── Load all data from Google Sheets ──
@@ -1650,6 +1725,9 @@ async function syncFromSheets() {
   showSyncStatus('⟳ Συγχρονισμός...');
 
   try {
+    // Πρώτα ξαναστέλνουμε ό,τι έμεινε pending από προηγούμενο offline διάστημα
+    await flushPendingChanges();
+
     // Load detectors
     const detRes = await gsGet({ action: 'getDetectors' });
     if (detRes.detectors && detRes.detectors.length > 0) {
@@ -1679,6 +1757,15 @@ async function syncFromSheets() {
             saveDeletedDetTags();
           }
         }));
+
+      // Ασφάλεια: αν παραμένει pending rename (το flush παραπάνω αποτυχημένο),
+      // το merge πιο πάνω μπορεί να ξανάφερε τον ΠΑΛΙΟ tag σαν "καινούργιο"
+      // ανιχνευτή — αφαίρεσέ τον, κρατάμε μόνο τον ήδη μετονομασμένο τοπικό.
+      PENDING_RENAMES.forEach(r => {
+        if (sheetDetTags.has(r.oldTag)) {
+          DETECTORS = DETECTORS.filter(d => d.tag !== r.oldTag);
+        }
+      });
     }
 
     // Load all entries
@@ -1701,6 +1788,26 @@ async function syncFromSheets() {
       // Sort entries by date
       DETECTORS.forEach(d => d.entries.sort((a,b) => a.date.localeCompare(b.date)));
     }
+
+    // Ασφάλεια: ξαναεφάρμοσε ό,τι έμεινε pending (π.χ. το GET πέτυχε αλλά το
+    // POST ακόμα αποτυγχάνει) πάνω στο φρεσκο-φορτωμένο array, ώστε νέες/
+    // τροποποιημένες/διαγραμμένες εγγραφές να μη χαθούν ή ξαναεμφανιστούν
+    // στην παλιά τους μορφή λόγω του destructive rebuild πιο πάνω.
+    PENDING_ENTRIES.forEach(pe => {
+      const d = pe.data;
+      let det = DETECTORS.find(x => x.tag === d.tag);
+      if (pe.action === 'addEntry') {
+        if (!det) { det = { tag: d.tag, area: getArea(d.tag), type: 'GAS', entries: [] }; DETECTORS.push(det); }
+        const exists = det.entries.some(en => en.date === d.date && en.tech === d.tech && en.task === d.task);
+        if (!exists) det.entries.push({ date: d.date, task: d.task, cylinder: d.cylinder, tech: d.tech, notes: d.notes });
+      } else if (det && pe.action === 'updateEntry') {
+        const i = det.entries.findIndex(en => en.date === d.originalDate && en.tech === d.originalTech);
+        const updated = { date: d.date, task: d.task, cylinder: d.cylinder, tech: d.tech, notes: d.notes };
+        if (i >= 0) det.entries[i] = updated; else det.entries.push(updated);
+      } else if (det && pe.action === 'deleteEntry') {
+        det.entries = det.entries.filter(en => !(en.date === d.date && en.tech === d.tech));
+      }
+    });
 
     // Load users — Sheet είναι η αλήθεια
     // Αφαιρούμε όλους πλην admin και τους ξαναφτιάχνουμε από το Sheet
@@ -1791,26 +1898,35 @@ async function syncFromSheets() {
     }
 
     gsConnected = true;
-    showSyncStatus('✓ Συνδεδεμένο', 'ok');
+    {
+      const pc = pendingChangesCount();
+      showSyncStatus(pc > 0 ? `✓ Συνδεδεμένο · ${pc} εκκρεμούν` : '✓ Συνδεδεμένο', 'ok');
+    }
     if (currentPage) showPage(currentPage);
 
   } catch(err) {
     console.error('Sync error:', err);
     gsConnected = false;
-    showSyncStatus('✗ Offline', 'err');
+    {
+      const pc = pendingChangesCount();
+      showSyncStatus(pc > 0 ? `✗ Offline · ${pc} εκκρεμούν` : '✗ Offline', 'err');
+    }
   } finally {
     gsSyncing = false;
   }
 }
 
 // ── Save entry to Google Sheets ──
+// Offline ή αποτυχία → μπαίνει στην ουρά PENDING_ENTRIES και ξανααποστέλλεται
+// αυτόματα στην αρχή του επόμενου syncFromSheets(). Δεν χάνεται σιωπηλά.
 async function gsSaveEntry(entry) {
-  if (!gsConnected) return;
+  if (!gsConnected) { queuePendingEntry('addEntry', entry); return; }
   try {
     await gsPost({ action: 'addEntry', data: entry });
   } catch(err) {
     console.error('Save entry error:', err);
-    showToast('⚠ Αποθηκεύτηκε τοπικά — δεν έφτασε στο Sheet', 'error');
+    showToast('⚠ Αποθηκεύτηκε τοπικά — θα ξανασταλεί αυτόματα στο Sheet', 'error');
+    queuePendingEntry('addEntry', entry);
   }
 }
 
@@ -1818,25 +1934,27 @@ async function gsSaveEntry(entry) {
 // Βρίσκουν τη γραμμή στο Sheet με key tag+originalDate+originalTech (update)
 // ή tag+date+tech (delete) — ίδιο convention με το dedup του import.
 async function gsUpdateEntry(data) {
-  if (!gsConnected) return false;
+  if (!gsConnected) { queuePendingEntry('updateEntry', data); return false; }
   try {
     await gsPost({ action: 'updateEntry', data });
     return true;
   } catch(err) {
     console.error('gsUpdateEntry error:', err);
-    showToast('⚠ Ενημερώθηκε τοπικά — δεν έφτασε στο Sheet', 'error');
+    showToast('⚠ Ενημερώθηκε τοπικά — θα ξανασταλεί αυτόματα στο Sheet', 'error');
+    queuePendingEntry('updateEntry', data);
     return false;
   }
 }
 
 async function gsDeleteEntry(data) {
-  if (!gsConnected) return false;
+  if (!gsConnected) { queuePendingEntry('deleteEntry', data); return false; }
   try {
     await gsPost({ action: 'deleteEntry', data });
     return true;
   } catch(err) {
     console.error('gsDeleteEntry error:', err);
-    showToast('⚠ Διαγράφηκε τοπικά — δεν έφτασε στο Sheet', 'error');
+    showToast('⚠ Διαγράφηκε τοπικά — θα ξανασταλεί αυτόματα στο Sheet', 'error');
+    queuePendingEntry('deleteEntry', data);
     return false;
   }
 }
@@ -1862,14 +1980,18 @@ async function gsUpdateDetector(data) {
 }
 
 // ΝΕΑ actions — χρειάζονται handler στο Code.gs (renameDetector/deleteDetector).
+// Offline ή αποτυχία → μπαίνει στο PENDING_RENAMES και ξαναστέλνεται αυτόματα
+// στην αρχή του επόμενου syncFromSheets() (βλ. flushPendingChanges()).
 async function gsRenameDetector(data) {
-  if (!gsConnected) return false;
+  if (!gsConnected) { queuePendingRename(data); return false; }
   try {
     await gsPost({ action: 'renameDetector', data });
+    clearPendingRename(data.oldTag);
     return true;
   } catch(err) {
     console.error('gsRenameDetector error:', err);
-    showToast('⚠ Μετονομάστηκε τοπικά — δεν έφτασε στο Sheet', 'error');
+    showToast('⚠ Μετονομάστηκε τοπικά — θα ξανασταλεί αυτόματα στο Sheet', 'error');
+    queuePendingRename(data);
     return false;
   }
 }
