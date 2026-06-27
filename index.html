@@ -2144,6 +2144,8 @@ function dateMaskInputHTML(id, isoValue, onchangeJs, extraStyle) {
       placeholder="ΗΗ/ΜΜ/ΕΕΕΕ" maxlength="10" value="${safeDisplay}"
       style="${extraStyle||''}"
       oninput="_dateMaskOnInput(this)"
+      onblur="_dateMaskOnBlur(this)"
+      onkeydown="if(event.key==='Enter'){_dateMaskOnBlur(this);this.blur();}"
       onclick="document.getElementById('${id}__hidden').showPicker ? document.getElementById('${id}__hidden').showPicker() : document.getElementById('${id}__hidden').focus()">
     <input type="date" id="${id}__hidden" value="${isoValue||''}" style="display:none"
       onchange="document.getElementById('${id}').value = this.value ? formatDate(this.value) : ''; (${onchangeJs})(this.value)">`;
@@ -2153,6 +2155,15 @@ function dateMaskInputHTML(id, isoValue, onchangeJs, extraStyle) {
 // αυτόματα "/" στις σωστές θέσεις, και ενημερώνει το ζευγαρωμένο κρυφό date input
 // (άρα και τον caller's onchange) μόνο όταν η ημερομηνία είναι πλήρης και έγκυρη.
 function _dateMaskOnInput(el) {
+  // Αν ο χρήστης γράφει με δικό του διαχωριστικό (π.χ. "6-7-22", "6.7.2022",
+  // "6/7/22") τον αφήνουμε να πληκτρολογήσει ελεύθερα — καμία παρέμβαση εδώ.
+  // Η μετατροπή σε πλήρες ΗΗ/ΜΜ/ΕΕΕΕ γίνεται στο _dateMaskOnBlur (όταν αφήσει
+  // το πεδίο ή πατήσει Enter), ώστε να μη χαλάει η θέση του cursor ή το "-"
+  // που μόλις έγραψε.
+  if (/[-./\s]/.test(el.value)) return;
+
+  // Διαφορετικά (μόνο ψηφία, π.χ. πληκτρολογεί συνεχόμενα "06072022") —
+  // αυτόματο "/" καθώς γράφει, όπως πριν.
   let digits = el.value.replace(/\D/g,'').slice(0,8);
   let out = digits;
   if (digits.length > 4) out = digits.slice(0,2) + '/' + digits.slice(2,4) + '/' + digits.slice(4);
@@ -2169,6 +2180,33 @@ function _dateMaskOnInput(el) {
       hidden.value = iso;
       hidden.dispatchEvent(new Event('change'));
     }
+  }
+}
+
+// Ολοκληρώνει σύντομες/ελεύθερες μορφές ημερομηνίας (π.χ. "6-7-22", "6.7.2022",
+// "6 7 22") σε πλήρες ΗΗ/ΜΜ/ΕΕΕΕ — καλείται όταν ο χρήστης αφήσει το πεδίο ή
+// πατήσει Enter. Δίψηφο έτος (π.χ. "22") μετατρέπεται αυτόματα σε "20" + "22".
+function _dateMaskOnBlur(el) {
+  const raw = el.value.trim();
+  if (!raw || !/[-./\s]/.test(raw)) return; // καμία αλλαγή — ήδη πλήρες ΗΗ/ΜΜ/ΕΕΕΕ ή κενό
+  const parts = raw.split(/[^0-9]+/).filter(Boolean);
+  if (parts.length !== 3) return; // ασαφές/ατελές — άφησέ το, ο χρήστης θα το διορθώσει
+  _dateMaskFinalize(el, parts[0], parts[1], parts[2]);
+}
+
+function _dateMaskFinalize(el, dStr, mStr, yStr) {
+  const day = parseInt(dStr, 10), month = parseInt(mStr, 10);
+  let year = parseInt(yStr, 10);
+  if (!day || !month || !year) return;
+  if (yStr.length <= 2) year += 2000; // "22" → 2022
+  const d = new Date(year, month - 1, day);
+  const valid = d.getFullYear() === year && d.getMonth() === month - 1 && d.getDate() === day;
+  if (!valid) { showToast('Μη έγκυρη ημερομηνία', 'error'); return; }
+  el.value = String(day).padStart(2,'0') + '/' + String(month).padStart(2,'0') + '/' + year;
+  const hidden = document.getElementById(el.id + '__hidden');
+  if (hidden) {
+    hidden.value = year + '-' + String(month).padStart(2,'0') + '-' + String(day).padStart(2,'0');
+    hidden.dispatchEvent(new Event('change'));
   }
 }
 
@@ -2976,6 +3014,7 @@ function renderDetectors(mc) {
     <div class="search-wrap">
       <input type="text" class="search-input" placeholder="${t('search-ph')}" value="${searchQ}" id="search-input" oninput="searchQ=this.value;renderDetectorList()">
       <button class="qr-btn" onclick="openQR('detectors')" title="QR Scan">📷</button>
+      <button class="qr-btn" onclick="exportPDF('filtered')" title="Εκτύπωση / Εξαγωγή PDF">🖨️</button>
     </div>
     <div class="filter-row">
       ${areas.map(a => `<div class="filter-pill ${filterArea===a?'active':''}" data-area="${a}" onclick="filterArea='${a}';renderDetectorList()">${a==='all'?t('all'):a}</div>`).join('')}
@@ -4546,10 +4585,11 @@ function exportMonthlyExcel(entries, monthLabel, month, year) {
 }
 
 function exportPDF(mode) {
-  // mode: 'all' | 'area' | 'detector' | 'upcoming'
+  // mode: 'all' | 'area' | 'detector' | 'upcoming' | 'filtered'
   let title = 'VMRTIN26 — MOTOR OIL REFINERIES';
   let subtitle = '';
   let rows = [];
+  let kpiSource = DETECTORS; // σύνολο που τροφοδοτεί τα KPI νούμερα πάνω-πάνω στο PDF
 
   if (mode === 'detector' && selectedDetector) {
     title = `ΙΣΤΟΡΙΚΟ ΑΝΙΧΝΕΥΤΗ: ${selectedDetector.tag}`;
@@ -4574,6 +4614,29 @@ function exportPDF(mode) {
       col4: d.category,
       col5: getAlertStatus(d) === 'overdue' ? '⚠ ΛΗΓΜΕΝΟ' : `${getDaysUntil(getNextCalDate(d))} μέρες`
     }));
+  } else if (mode === 'filtered') {
+    // Εξαγωγή ΑΚΡΙΒΩΣ ό,τι βλέπει αυτή τη στιγμή ο χρήστης στη λίστα ανιχνευτών:
+    // ίδιο φίλτρο περιοχής (filterArea) + ίδιο κείμενο αναζήτησης (searchQ).
+    const filtered = DETECTORS.filter(d => {
+      const areaOk = filterArea === 'all' || d.area === filterArea;
+      const searchOk = !searchQ || d.tag.toLowerCase().includes(searchQ.toLowerCase());
+      return areaOk && searchOk;
+    });
+    kpiSource = filtered;
+    const areaLabel = filterArea === 'all' ? 'ΟΛΕΣ ΟΙ ΠΕΡΙΟΧΕΣ' : filterArea;
+    title = searchQ ? `ΑΝΙΧΝΕΥΤΕΣ — ΑΝΑΖΗΤΗΣΗ "${searchQ}"` : `ΑΝΙΧΝΕΥΤΕΣ — ${areaLabel}`;
+    subtitle = `${areaLabel}${searchQ ? ' · Αναζήτηση: "' + searchQ + '"' : ''} · ${filtered.length} ανιχνευτές · Εξαγωγή: ${new Date().toLocaleDateString('el-GR')}`;
+    rows = filtered.map(d => {
+      const days = getDaysUntil(getNextCalDate(d));
+      const status = getAlertStatus(d);
+      return {
+        col1: d.tag,
+        col2: d.location || d.area,
+        col3: d.category,
+        col4: formatDate(getNextCalDate(d)),
+        col5: status === 'overdue' ? '⚠ ΛΗΓΜΕΝΟ' : status === 'soon' ? `${days} μέρες` : d.entries.length + ' εγγρ.'
+      };
+    });
   } else {
     // all detectors summary
     subtitle = `Σύνολο: ${DETECTORS.length} · Εξαγωγή: ${new Date().toLocaleDateString('el-GR')}`;
@@ -4591,9 +4654,9 @@ function exportPDF(mode) {
     : ['TAG','ΤΟΠΟΘΕΣΙΑ / ΠΕΡΙΟΧΗ','ΚΑΤΗΓΟΡΙΑ','ΕΠΟΜΕΝΗ ΒΑΘΜ.','ΚΑΤΑΣΤΑΣΗ'];
 
   const alertCounts = {
-    overdue: DETECTORS.filter(d=>getAlertStatus(d)==='overdue').length,
-    soon:    DETECTORS.filter(d=>getAlertStatus(d)==='soon').length,
-    ok:      DETECTORS.filter(d=>getAlertStatus(d)==='ok').length,
+    overdue: kpiSource.filter(d=>getAlertStatus(d)==='overdue').length,
+    soon:    kpiSource.filter(d=>getAlertStatus(d)==='soon').length,
+    ok:      kpiSource.filter(d=>getAlertStatus(d)==='ok').length,
   };
 
   const html = `<!DOCTYPE html>
@@ -4648,7 +4711,7 @@ function exportPDF(mode) {
 </div>
 ${mode !== 'detector' ? `
 <div class="kpi-row">
-  <div class="kpi"><div class="kpi-val">${DETECTORS.length}</div><div class="kpi-lbl">Σύνολο</div></div>
+  <div class="kpi"><div class="kpi-val">${kpiSource.length}</div><div class="kpi-lbl">Σύνολο</div></div>
   <div class="kpi red"><div class="kpi-val">${alertCounts.overdue}</div><div class="kpi-lbl">Ληγμένοι</div></div>
   <div class="kpi" style="border-color:#ff7a2a"><div class="kpi-val">${alertCounts.soon}</div><div class="kpi-lbl">≤30 μέρες</div></div>
   <div class="kpi green"><div class="kpi-val">${alertCounts.ok}</div><div class="kpi-lbl">Εντός</div></div>
