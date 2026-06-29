@@ -1520,6 +1520,43 @@ function saveDeletedNpIds() {
   localStorage.setItem('vmrtin26_deleted_np_ids', JSON.stringify(DELETED_NP_IDS));
 }
 
+// LINKS: { id, url, label, type, created } — κοινή δεξαμενή URLs (PDF/Cause&Effect/
+// Layout/Σχέδια). Πολλά detectors/np-items μπορούν να δείχνουν στο ΙΔΙΟ link row
+// μέσω LINK_ATTACHMENTS — αλλάζοντας εδώ ενημερώνεται παντού όπου είναι κουμπωμένο.
+let LINKS = JSON.parse(localStorage.getItem('vmrtin26_links') || '[]');
+let DELETED_LINK_IDS = JSON.parse(localStorage.getItem('vmrtin26_deleted_link_ids') || '[]');
+
+function saveLinks() {
+  localStorage.setItem('vmrtin26_links', JSON.stringify(LINKS));
+}
+function saveDeletedLinkIds() {
+  localStorage.setItem('vmrtin26_deleted_link_ids', JSON.stringify(DELETED_LINK_IDS));
+}
+
+// LINK_ATTACHMENTS: { id, entityType:'DETECTOR'|'NPITEM', entityKey, linkId, created }
+// entityKey = tag (DETECTOR) ή NEWPROJECT_ITEMS.id (NPITEM). Many-to-many σύνδεση.
+let LINK_ATTACHMENTS = JSON.parse(localStorage.getItem('vmrtin26_link_attachments') || '[]');
+let DELETED_LINKATT_IDS = JSON.parse(localStorage.getItem('vmrtin26_deleted_linkatt_ids') || '[]');
+
+function saveLinkAttachments() {
+  localStorage.setItem('vmrtin26_link_attachments', JSON.stringify(LINK_ATTACHMENTS));
+}
+function saveDeletedLinkAttIds() {
+  localStorage.setItem('vmrtin26_deleted_linkatt_ids', JSON.stringify(DELETED_LINKATT_IDS));
+}
+
+// NP_NOTES: { id, npId, date, text, author } — log σημειώσεων εγκατάστασης ΝΕΟΥ
+// ΕΡΓΟΥ με ημερομηνίες (κάθε σημείωση ξεχωριστή γραμμή, ΟΧΙ στατικό πεδίο).
+let NP_NOTES = JSON.parse(localStorage.getItem('vmrtin26_np_notes') || '[]');
+let DELETED_NPNOTE_IDS = JSON.parse(localStorage.getItem('vmrtin26_deleted_npnote_ids') || '[]');
+
+function saveNpNotes() {
+  localStorage.setItem('vmrtin26_np_notes', JSON.stringify(NP_NOTES));
+}
+function saveDeletedNpNoteIds() {
+  localStorage.setItem('vmrtin26_deleted_npnote_ids', JSON.stringify(DELETED_NPNOTE_IDS));
+}
+
 // ── Push μία φιάλη στο Sheet (upsert) ──
 async function gsSaveCylinder(cyl) {
   try {
@@ -1589,6 +1626,47 @@ async function gsPromoteNewProjectItem(item) {
     console.error('gsPromoteNewProjectItem error:', err);
     return false;
   }
+}
+
+// ── LINKS (κοινή δεξαμενή URLs) ──
+async function gsSaveLink(link) {
+  if (!gsConnected) return false;
+  try { await gsPost({ action: 'saveLink', data: link }); return true; }
+  catch(err) { console.error('gsSaveLink error:', err); return false; }
+}
+async function gsDeleteLink(id) {
+  if (!gsConnected) return false;
+  try { await gsPost({ action: 'deleteLink', data: { id } }); return true; }
+  catch(err) { console.error('gsDeleteLink error:', err); return false; }
+}
+
+// ── LINK_ATTACHMENTS (σύνδεση tag/np-item ↔ link) ──
+async function gsSaveLinkAttachment(att) {
+  if (!gsConnected) return false;
+  try { await gsPost({ action: 'saveLinkAttachment', data: att }); return true; }
+  catch(err) { console.error('gsSaveLinkAttachment error:', err); return false; }
+}
+async function gsDeleteLinkAttachment(id) {
+  if (!gsConnected) return false;
+  try { await gsPost({ action: 'deleteLinkAttachment', data: { id } }); return true; }
+  catch(err) { console.error('gsDeleteLinkAttachment error:', err); return false; }
+}
+
+// ── NP_NOTES (σημειώσεις εγκατάστασης ΝΕΟΥ ΕΡΓΟΥ) ──
+async function gsAddNpNote(note) {
+  if (!gsConnected) return false;
+  try { await gsPost({ action: 'addNpNote', data: note }); return true; }
+  catch(err) { console.error('gsAddNpNote error:', err); return false; }
+}
+async function gsUpdateNpNote(note) {
+  if (!gsConnected) return false;
+  try { await gsPost({ action: 'updateNpNote', data: note }); return true; }
+  catch(err) { console.error('gsUpdateNpNote error:', err); return false; }
+}
+async function gsDeleteNpNote(id) {
+  if (!gsConnected) return false;
+  try { await gsPost({ action: 'deleteNpNote', data: { id } }); return true; }
+  catch(err) { console.error('gsDeleteNpNote error:', err); return false; }
 }
 
 function getCurrentMonthKey() {
@@ -1894,6 +1972,96 @@ async function syncFromSheets() {
         NEWPROJECT_ITEMS
           .filter(it => !DELETED_NP_IDS.includes(String(it.id)))
           .forEach(it => gsSaveNewProjectItem(it));
+      }
+    }
+
+    // ── LINKS: ίδιο tombstone-aware sync ──
+    const linksRes = await gsGet({ action: 'getLinks' });
+    if (linksRes.links) {
+      if (linksRes.links.length > 0) {
+        const linkSheetIds = new Set(linksRes.links.map(l => String(l.id)));
+        const linkLocalOnly = LINKS.filter(l =>
+          !linkSheetIds.has(String(l.id)) && !DELETED_LINK_IDS.includes(String(l.id))
+        );
+        LINKS.length = 0;
+        linksRes.links
+          .filter(l => !DELETED_LINK_IDS.includes(String(l.id)))
+          .forEach(l => LINKS.push(l));
+        linkLocalOnly.forEach(l => LINKS.push(l));
+        saveLinks();
+        linkLocalOnly.forEach(l => gsSaveLink(l));
+        DELETED_LINK_IDS
+          .filter(tid => linkSheetIds.has(tid))
+          .forEach(tid => gsDeleteLink(tid).then(ok => {
+            if (ok) {
+              DELETED_LINK_IDS = DELETED_LINK_IDS.filter(x => x !== tid);
+              saveDeletedLinkIds();
+            }
+          }));
+      } else if (LINKS.length > 0) {
+        LINKS
+          .filter(l => !DELETED_LINK_IDS.includes(String(l.id)))
+          .forEach(l => gsSaveLink(l));
+      }
+    }
+
+    // ── LINK_ATTACHMENTS: ίδιο tombstone-aware sync ──
+    const attRes = await gsGet({ action: 'getLinkAttachments' });
+    if (attRes.attachments) {
+      if (attRes.attachments.length > 0) {
+        const attSheetIds = new Set(attRes.attachments.map(a => String(a.id)));
+        const attLocalOnly = LINK_ATTACHMENTS.filter(a =>
+          !attSheetIds.has(String(a.id)) && !DELETED_LINKATT_IDS.includes(String(a.id))
+        );
+        LINK_ATTACHMENTS.length = 0;
+        attRes.attachments
+          .filter(a => !DELETED_LINKATT_IDS.includes(String(a.id)))
+          .forEach(a => LINK_ATTACHMENTS.push(a));
+        attLocalOnly.forEach(a => LINK_ATTACHMENTS.push(a));
+        saveLinkAttachments();
+        attLocalOnly.forEach(a => gsSaveLinkAttachment(a));
+        DELETED_LINKATT_IDS
+          .filter(tid => attSheetIds.has(tid))
+          .forEach(tid => gsDeleteLinkAttachment(tid).then(ok => {
+            if (ok) {
+              DELETED_LINKATT_IDS = DELETED_LINKATT_IDS.filter(x => x !== tid);
+              saveDeletedLinkAttIds();
+            }
+          }));
+      } else if (LINK_ATTACHMENTS.length > 0) {
+        LINK_ATTACHMENTS
+          .filter(a => !DELETED_LINKATT_IDS.includes(String(a.id)))
+          .forEach(a => gsSaveLinkAttachment(a));
+      }
+    }
+
+    // ── NP_NOTES: ίδιο tombstone-aware sync ──
+    const notesRes = await gsGet({ action: 'getNpNotes' });
+    if (notesRes.notes) {
+      if (notesRes.notes.length > 0) {
+        const noteSheetIds = new Set(notesRes.notes.map(n => String(n.id)));
+        const noteLocalOnly = NP_NOTES.filter(n =>
+          !noteSheetIds.has(String(n.id)) && !DELETED_NPNOTE_IDS.includes(String(n.id))
+        );
+        NP_NOTES.length = 0;
+        notesRes.notes
+          .filter(n => !DELETED_NPNOTE_IDS.includes(String(n.id)))
+          .forEach(n => NP_NOTES.push(n));
+        noteLocalOnly.forEach(n => NP_NOTES.push(n));
+        saveNpNotes();
+        noteLocalOnly.forEach(n => gsAddNpNote(n));
+        DELETED_NPNOTE_IDS
+          .filter(tid => noteSheetIds.has(tid))
+          .forEach(tid => gsDeleteNpNote(tid).then(ok => {
+            if (ok) {
+              DELETED_NPNOTE_IDS = DELETED_NPNOTE_IDS.filter(x => x !== tid);
+              saveDeletedNpNoteIds();
+            }
+          }));
+      } else if (NP_NOTES.length > 0) {
+        NP_NOTES
+          .filter(n => !DELETED_NPNOTE_IDS.includes(String(n.id)))
+          .forEach(n => gsAddNpNote(n));
       }
     }
 
@@ -3186,15 +3354,17 @@ function renderDetectorDetail(mc) {
       </div>` : ''}
     </div>
     ${ROLES[currentUser.role].canAdd ? `
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 44px;gap:8px;margin-bottom:14px">
       <button class="submit-btn" onclick="addForDetector('${d.tag}')">➕ Νέα εγγραφή</button>
       <button class="submit-btn" onclick="exportPDF('detector')" style="background:var(--blue)">📄 PDF</button>
       <button class="submit-btn" onclick="showQRModal('${d.tag}')" style="background:var(--purple)">📲 QR</button>
+      <button class="submit-btn" onclick="showDetectorLinksModal('${d.tag}')" style="background:var(--cyan);color:var(--on-accent);padding:14px 0" title="Links & Σχέδια">📎</button>
     </div>
     ` : `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+    <div style="display:grid;grid-template-columns:1fr 1fr 44px;gap:8px;margin-bottom:14px">
       <button class="submit-btn" onclick="exportPDF('detector')" style="background:var(--blue)">📄 Εξαγωγή PDF</button>
       <button class="submit-btn" onclick="showQRModal('${d.tag}')" style="background:var(--purple)">📲 QR</button>
+      <button class="submit-btn" onclick="showDetectorLinksModal('${d.tag}')" style="background:var(--cyan);color:var(--on-accent);padding:14px 0" title="Links & Σχέδια">📎</button>
     </div>
     `}
     <div class="card-title" style="margin-bottom:10px">${t('history')}</div>
@@ -3625,7 +3795,13 @@ function renderAdd(mc) {
     </div>
     <div class="form-group">
       <label class="form-label">${t('form-tech')}</label>
-      <input type="text" class="form-input" id="add-tech" value="${currentUser.name}" ${currentUser.role==='technician'?'readonly':''}>
+      <select class="form-input" id="add-tech" ${currentUser.role==='technician'?'disabled':''}>
+        ${Object.values(USERS).map(u => {
+          const safe = String(u.name||'').replace(/"/g,'&quot;');
+          const roleLabel = ROLES[u.role] ? ROLES[u.role].label : u.role;
+          return `<option value="${safe}" ${u.name===currentUser.name?'selected':''}>${safe} (${roleLabel})</option>`;
+        }).join('')}
+      </select>
     </div>
     <div class="form-group">
       <label class="form-label">${t('form-notes')}</label>
@@ -5613,8 +5789,12 @@ function renderNpProjectDetail(mc) {
 
     <div style="display:flex;gap:8px;margin-bottom:10px">
       <button onclick="exportNewProjectPDF('${npEsc(currentNpProject)}')"
-        style="background:var(--blue);border:none;border-radius:var(--radius);color:#fff;padding:8px 12px;font-size:16px;cursor:pointer" title="Εξαγωγή PDF">
+        style="background:var(--blue);border:none;border-radius:var(--radius);color:#fff;padding:8px 12px;font-size:16px;cursor:pointer" title="Εξαγωγή PDF — σύνοψη/πίνακας">
         📄
+      </button>
+      <button onclick="exportNewProjectDetailedPDF('${npEsc(currentNpProject)}')"
+        style="background:var(--cyan);border:none;border-radius:var(--radius);color:var(--on-accent);padding:8px 12px;font-size:16px;cursor:pointer" title="Εξαγωγή PDF — αναλυτικά με σημειώσεις & links">
+        📝
       </button>
       <button onclick="showAddNpItemModal('${npEsc(currentNpProject)}')"
         style="flex:1;background:var(--cyan);border:none;border-radius:var(--radius);color:var(--on-accent);padding:8px 16px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap">
@@ -5646,8 +5826,12 @@ function renderNpProjectDetail(mc) {
             <div style="font-family:var(--mono);font-size:17px;color:var(--text)">${it.tag || '—'}</div>
             <div style="font-size:12px;color:var(--text3);margin-top:2px">${it.location || ''}</div>
           </div>
-          <button onclick="deleteNpItem('${it.id}')" title="Διαγραφή"
-            style="background:rgba(200,0,0,0.08);border:1px solid var(--red);border-radius:var(--radius);color:var(--red2);width:30px;height:30px;cursor:pointer;font-size:13px;flex-shrink:0">🗑</button>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            <button onclick="showNpItemDetailModal('${it.id}')" title="Σημειώσεις & Links"
+              style="background:var(--badge-cyan-bg);border:1px solid var(--cyan);border-radius:var(--radius);color:var(--cyan2);width:30px;height:30px;cursor:pointer;font-size:13px;flex-shrink:0">📝</button>
+            <button onclick="deleteNpItem('${it.id}')" title="Διαγραφή"
+              style="background:rgba(200,0,0,0.08);border:1px solid var(--red);border-radius:var(--radius);color:var(--red2);width:30px;height:30px;cursor:pointer;font-size:13px;flex-shrink:0">🗑</button>
+          </div>
         </div>
 
         <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
@@ -5957,6 +6141,558 @@ function exportNewProjectPDF(projectFilter) {
   <input type="text" placeholder="π.χ. 07/06/2026"
     style="border:1px solid #ccc;border-radius:4px;padding:6px 10px;font-size:13px;width:120px;text-align:center"
     oninput="document.getElementById('np-footer').textContent='Motor Oil Refineries · Instruments Dept · VMRTIN26 · '+this.value">
+</div>
+<div class="no-print" style="text-align:center;margin-top:12px">
+  <button onclick="window.print()" style="background:#e8620c;color:#fff;border:none;padding:10px 28px;font-size:14px;font-weight:700;border-radius:6px;cursor:pointer;margin-right:8px">🖨 ΕΚΤΥΠΩΣΗ</button>
+  <button onclick="window.close()" style="background:#555;color:#fff;border:none;padding:10px 20px;font-size:14px;border-radius:6px;cursor:pointer">✕ Κλείσιμο</button>
+</div>
+</body></html>`;
+
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const win  = window.open(url, '_blank');
+  if (!win) showToast('Επίτρεψε τα pop-ups', 'error');
+  else setTimeout(() => URL.revokeObjectURL(url), 3000);
+}
+
+// ════════════════════════════════════════
+// LINKS / ΣΧΕΔΙΑ + ΣΗΜΕΙΩΣΕΙΣ ΝΕΟΥ ΕΡΓΟΥ
+// Μόνο ο admin προσθέτει/επεξεργάζεται/αφαιρεί — οι υπόλοιποι βλέπουν/ανοίγουν.
+// ════════════════════════════════════════
+
+const LINK_TYPE_META = {
+  PDF:     { icon: '📄', label: 'PDF' },
+  CE:      { icon: '🔗', label: 'Cause & Effect' },
+  LAYOUT:  { icon: '🗺️', label: 'Layout' },
+  DRAWING: { icon: '📐', label: 'Σχέδιο' },
+  OTHER:   { icon: '📎', label: 'Άλλο' },
+};
+function linkTypeIcon(type)  { return (LINK_TYPE_META[type] || LINK_TYPE_META.OTHER).icon; }
+function linkTypeLabel(type) { return (LINK_TYPE_META[type] || LINK_TYPE_META.OTHER).label; }
+
+// Βρίσκει το NEWPROJECT_ITEMS record που "γέννησε" έναν κανονικό ανιχνευτή —
+// μέσω tag (μοναδικό σε όλο το σύστημα), όχι αποθηκευμένο foreign key.
+function findNpHistoryForTag(tag) {
+  return NEWPROJECT_ITEMS.find(it => it.tag === tag && it.status === NP_STATUS_DONE) || null;
+}
+
+function getLinksForEntity(entityType, entityKey) {
+  return LINK_ATTACHMENTS
+    .filter(a => a.entityType === entityType && String(a.entityKey) === String(entityKey))
+    .map(a => ({ att: a, link: LINKS.find(l => String(l.id) === String(a.linkId)) }))
+    .filter(x => x.link);
+}
+
+function refreshOpenEntityModal(entityType, entityKey) {
+  if (entityType === 'DETECTOR') showDetectorLinksModal(entityKey);
+  else if (entityType === 'NPITEM') showNpItemDetailModal(entityKey);
+}
+
+function renderLinkItemHTML(att, link, canEdit) {
+  return `
+    <div class="card" style="margin-bottom:8px;padding:12px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <a href="${link.url}" target="_blank" rel="noopener" style="flex:1;min-width:0;text-decoration:none;color:var(--text1)">
+          <div style="font-size:11px;color:var(--text3);font-family:var(--cond);font-weight:600">${linkTypeIcon(link.type)} ${linkTypeLabel(link.type)}</div>
+          <div style="font-size:14px;color:var(--cyan2);margin-top:2px;word-break:break-all">${(link.label || link.url).replace(/</g,'&lt;')}</div>
+        </a>
+        ${canEdit ? `
+        <div style="display:flex;gap:4px;flex-shrink:0">
+          <button onclick="event.stopPropagation();showEditLinkModal('${npEsc(link.id)}','${npEsc(att.entityType)}','${npEsc(att.entityKey)}')" title="Επεξεργασία"
+            style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--text3);padding:2px">✏️</button>
+          <button onclick="event.stopPropagation();unlinkFromEntity('${npEsc(att.id)}')" title="Αφαίρεση"
+            style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--red2);padding:2px">✕</button>
+        </div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+// ── Links ΚΑΝΟΝΙΚΟΥ ανιχνευτή: δείχνει ΚΑΙ ιστορικό εγκατάστασης (αν προήλθε
+// από ΝΕΟ ΕΡΓΟ, πάντα read-only — η αλλαγή γίνεται από εκεί) ΚΑΙ τις δικές
+// του συνδέσεις στο κανονικό πρόγραμμα (επεξεργάσιμες από admin). ──
+function showDetectorLinksModal(tag) {
+  const canEdit = ROLES[currentUser.role].canAdmin;
+  const npHistory = findNpHistoryForTag(tag);
+  const ownLinks = getLinksForEntity('DETECTOR', tag);
+  const histLinks = npHistory ? getLinksForEntity('NPITEM', npHistory.id) : [];
+  const histNotes = npHistory
+    ? NP_NOTES.filter(n => n.npId === npHistory.id).sort((a,b) => String(b.date).localeCompare(String(a.date)))
+    : [];
+
+  let overlay = document.getElementById('detlinks-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.className = 'modal-overlay open';
+    overlay.id = 'detlinks-overlay';
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  }
+  overlay.dataset.tag = tag;
+
+  overlay.innerHTML = `
+    <div class="modal-box" style="max-width:440px;text-align:left;max-height:90vh;overflow-y:auto">
+      <div class="modal-title" style="margin-bottom:14px">📎 Links & Σχέδια — ${tag}</div>
+
+      ${npHistory ? `
+      <div class="card-title" style="margin-top:4px">🏗 ΙΣΤΟΡΙΚΟ ΕΓΚΑΤΑΣΤΑΣΗΣ (${npHistory.project})</div>
+      ${histNotes.length ? histNotes.map(n => `
+        <div class="history-entry" style="margin-bottom:8px">
+          <div class="hist-date">📅 ${formatDate(n.date)}</div>
+          <div class="hist-tech" style="margin-top:4px">${(n.text||'').replace(/</g,'&lt;')}</div>
+          ${n.author ? `<div class="hist-tech" style="margin-top:2px;font-style:italic">👤 ${n.author}</div>` : ''}
+        </div>
+      `).join('') : `<div style="font-size:12px;color:var(--text3);margin-bottom:10px">— χωρίς σημειώσεις εγκατάστασης —</div>`}
+      ${histLinks.map(({att,link}) => renderLinkItemHTML(att, link, false)).join('')}
+      <div style="font-size:11px;color:var(--text3);margin:6px 0 16px">
+        Πηγή αλήθειας: ΝΕΟ ΕΡΓΟ —
+        <span style="color:var(--cyan2);cursor:pointer;text-decoration:underline" onclick="document.getElementById('detlinks-overlay').remove();currentNpProject='${npEsc(npHistory.project)}';showPage('newproject')">άνοιγμα έργου ›</span>
+      </div>
+      <div style="border-top:1px solid var(--border);margin-bottom:14px"></div>
+      ` : ''}
+
+      <div class="card-title">📎 ΣΥΝΔΕΣΕΙΣ ΠΡΟΓΡΑΜΜΑΤΟΣ</div>
+      <div id="detlinks-own-list">
+        ${ownLinks.length ? ownLinks.map(({att,link}) => renderLinkItemHTML(att, link, canEdit)).join('') : `<div style="font-size:12px;color:var(--text3);margin-bottom:10px">— δεν υπάρχουν συνδέσεις —</div>`}
+      </div>
+
+      ${canEdit ? `
+      <button onclick="showAddLinkModal('DETECTOR','${npEsc(tag)}')"
+        style="width:100%;margin-top:6px;background:var(--cyan);border:none;border-radius:var(--radius);color:var(--on-accent);padding:11px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer">
+        + Προσθήκη link
+      </button>` : ''}
+
+      <button class="modal-cancel" style="width:100%;margin-top:14px" onclick="document.getElementById('detlinks-overlay').remove()">Κλείσιμο</button>
+    </div>
+  `;
+}
+
+// ── Σημειώσεις + Links ανιχνευτή ΝΕΟΥ ΕΡΓΟΥ (πριν/μετά την προαγωγή — η πηγή
+// αλήθειας παραμένει εδώ ακόμα και μετά). Admin γράφει, όλοι βλέπουν. ──
+function showNpItemDetailModal(npId) {
+  renderNpItemDetailModalBody(npId);
+}
+
+function renderNpItemDetailModalBody(npId) {
+  const it = NEWPROJECT_ITEMS.find(x => String(x.id) === String(npId));
+  if (!it) { document.getElementById('npdetail-overlay')?.remove(); return; }
+  const canEdit = ROLES[currentUser.role].canAdmin;
+  const notes = NP_NOTES.filter(n => n.npId === String(npId)).sort((a,b) => String(b.date).localeCompare(String(a.date)));
+  const links = getLinksForEntity('NPITEM', npId);
+
+  let overlay = document.getElementById('npdetail-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.className = 'modal-overlay open';
+    overlay.id = 'npdetail-overlay';
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  }
+
+  overlay.innerHTML = `
+    <div class="modal-box" style="max-width:440px;text-align:left;max-height:90vh;overflow-y:auto">
+      <div class="modal-title" style="margin-bottom:2px">📝 ${it.tag}</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:14px">${it.project} · Σημειώσεις & Links εγκατάστασης</div>
+
+      <div class="card-title">ΣΗΜΕΙΩΣΕΙΣ</div>
+      ${canEdit ? `
+      <div style="margin-bottom:10px">
+        ${dateMaskInputHTML('npn-date', new Date().toISOString().split('T')[0], "v => {}", 'width:100%;margin-bottom:8px;padding:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);font-family:var(--mono);font-size:14px;box-sizing:border-box')}
+        <textarea class="field-input" id="npn-text" rows="2" placeholder="Νέα σημείωση..." style="margin-bottom:8px"></textarea>
+        <button class="modal-ok" style="width:100%" onclick="submitNpNote('${npEsc(npId)}')">+ Προσθήκη σημείωσης</button>
+      </div>
+      ` : ''}
+      ${notes.length ? notes.map(n => `
+        <div class="history-entry" style="position:relative;margin-bottom:8px">
+          ${canEdit ? `
+          <button onclick="deleteNpNoteUI('${npEsc(n.id)}')" title="Διαγραφή"
+            style="position:absolute;top:8px;right:8px;background:none;border:none;cursor:pointer;font-size:13px;color:var(--text3);padding:2px">🗑</button>
+          ` : ''}
+          <div class="hist-date">📅 ${formatDate(n.date)}</div>
+          <div class="hist-tech" style="margin-top:4px;padding-right:20px">${(n.text||'').replace(/</g,'&lt;')}</div>
+          ${n.author ? `<div class="hist-tech" style="margin-top:2px;font-style:italic">👤 ${n.author}</div>` : ''}
+        </div>
+      `).join('') : `<div style="font-size:12px;color:var(--text3);margin-bottom:14px">— χωρίς σημειώσεις ακόμα —</div>`}
+
+      <div style="border-top:1px solid var(--border);margin:14px 0"></div>
+
+      <div class="card-title">📎 LINKS & ΣΧΕΔΙΑ</div>
+      <div id="npdetail-links-list">
+        ${links.length ? links.map(({att,link}) => renderLinkItemHTML(att, link, canEdit)).join('') : `<div style="font-size:12px;color:var(--text3);margin-bottom:10px">— δεν υπάρχουν links —</div>`}
+      </div>
+      ${canEdit ? `
+      <button onclick="showAddLinkModal('NPITEM','${npEsc(npId)}')"
+        style="width:100%;margin-top:6px;background:var(--cyan);border:none;border-radius:var(--radius);color:var(--on-accent);padding:11px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer">
+        + Προσθήκη link
+      </button>` : ''}
+
+      <button class="modal-cancel" style="width:100%;margin-top:14px" onclick="document.getElementById('npdetail-overlay').remove()">Κλείσιμο</button>
+    </div>
+  `;
+}
+
+function submitNpNote(npId) {
+  const dateEl = document.getElementById('npn-date__hidden');
+  const textEl = document.getElementById('npn-text');
+  const date = dateEl ? dateEl.value : '';
+  const text = textEl ? textEl.value.trim() : '';
+  if (!date || !text) { showToast('Συμπλήρωσε ημερομηνία και σημείωση', 'error'); return; }
+
+  const note = {
+    id: 'npn_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+    npId: String(npId), date, text,
+    author: currentUser.name || currentUser.username,
+  };
+  NP_NOTES.push(note);
+  saveNpNotes();
+  gsAddNpNote(note);
+
+  showToast('✓ Η σημείωση προστέθηκε');
+  renderNpItemDetailModalBody(npId);
+}
+
+function deleteNpNoteUI(noteId) {
+  const note = NP_NOTES.find(n => String(n.id) === String(noteId));
+  if (!note) return;
+  if (!confirm('Διαγραφή αυτής της σημείωσης;')) return;
+  const npId = note.npId;
+
+  NP_NOTES = NP_NOTES.filter(n => String(n.id) !== String(noteId));
+  saveNpNotes();
+  if (!DELETED_NPNOTE_IDS.includes(String(noteId))) DELETED_NPNOTE_IDS.push(String(noteId));
+  saveDeletedNpNoteIds();
+  gsDeleteNpNote(noteId).then(ok => {
+    if (ok) { DELETED_NPNOTE_IDS = DELETED_NPNOTE_IDS.filter(x => x !== String(noteId)); saveDeletedNpNoteIds(); }
+  });
+
+  showToast('✓ Η σημείωση διαγράφηκε');
+  renderNpItemDetailModalBody(npId);
+}
+
+// ── Προσθήκη link σε detector ή np-item: "Νέο link" (δημιουργεί νέο shared
+// LINKS row) ή "Υπάρχον link" (απλά κουμπώνει ένα ήδη υπάρχον — γίνεται shared). ──
+let addLinkModalMode = 'new';
+
+function showAddLinkModal(entityType, entityKey) {
+  addLinkModalMode = 'new';
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay open';
+  overlay.id = 'addlink-overlay';
+  overlay.dataset.entityType = entityType;
+  overlay.dataset.entityKey = entityKey;
+  overlay.innerHTML = `
+    <div class="modal-box" style="max-width:400px;text-align:left;max-height:90vh;overflow-y:auto">
+      <div class="modal-title" style="margin-bottom:14px">📎 Προσθήκη Link</div>
+      <div style="display:flex;gap:6px;margin-bottom:14px">
+        <button id="addlink-tab-new" onclick="switchAddLinkTab('new')"
+          style="flex:1;padding:8px;border-radius:var(--radius);font-family:var(--cond);font-weight:700;font-size:12px;cursor:pointer;border:1px solid var(--cyan);background:var(--badge-cyan-bg);color:var(--cyan2)">
+          🆕 Νέο link
+        </button>
+        <button id="addlink-tab-existing" onclick="switchAddLinkTab('existing')"
+          style="flex:1;padding:8px;border-radius:var(--radius);font-family:var(--cond);font-weight:700;font-size:12px;cursor:pointer;border:1px solid var(--border);background:var(--bg3);color:var(--text2)">
+          📂 Υπάρχον link
+        </button>
+      </div>
+      <div id="addlink-body"></div>
+      <div id="addlink-error" style="color:var(--red2);font-size:13px;margin:10px 0;display:none"></div>
+      <button class="modal-cancel" style="width:100%" onclick="document.getElementById('addlink-overlay').remove()">Ακύρωση</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  renderAddLinkBody(entityType, entityKey);
+}
+
+function switchAddLinkTab(mode) {
+  addLinkModalMode = mode;
+  const overlay = document.getElementById('addlink-overlay');
+  const tabNew = document.getElementById('addlink-tab-new');
+  const tabExisting = document.getElementById('addlink-tab-existing');
+  tabNew.style.borderColor      = mode==='new' ? 'var(--cyan)' : 'var(--border)';
+  tabNew.style.background       = mode==='new' ? 'var(--badge-cyan-bg)' : 'var(--bg3)';
+  tabNew.style.color            = mode==='new' ? 'var(--cyan2)' : 'var(--text2)';
+  tabExisting.style.borderColor = mode==='existing' ? 'var(--cyan)' : 'var(--border)';
+  tabExisting.style.background  = mode==='existing' ? 'var(--badge-cyan-bg)' : 'var(--bg3)';
+  tabExisting.style.color       = mode==='existing' ? 'var(--cyan2)' : 'var(--text2)';
+  renderAddLinkBody(overlay.dataset.entityType, overlay.dataset.entityKey);
+}
+
+function renderAddLinkBody(entityType, entityKey) {
+  const body = document.getElementById('addlink-body');
+  if (addLinkModalMode === 'new') {
+    body.innerHTML = `
+      <label class="field-label">ΤΥΠΟΣ</label>
+      <select class="field-input" id="al-type" style="margin-bottom:10px">
+        ${Object.keys(LINK_TYPE_META).map(k => `<option value="${k}">${LINK_TYPE_META[k].icon} ${LINK_TYPE_META[k].label}</option>`).join('')}
+      </select>
+      <label class="field-label">ΕΤΙΚΕΤΑ</label>
+      <input type="text" class="field-input" id="al-label" placeholder="π.χ. Layout Area 44" style="margin-bottom:10px">
+      <label class="field-label">URL *</label>
+      <input type="text" class="field-input" id="al-url" placeholder="https://drive.google.com/..." style="margin-bottom:16px">
+      <button class="modal-ok" style="width:100%" onclick="submitNewLinkAttachment()">✓ Προσθήκη</button>
+    `;
+  } else {
+    const attached = getLinksForEntity(entityType, entityKey).map(x => String(x.link.id));
+    const existing = LINKS.filter(l => !attached.includes(String(l.id)));
+    body.innerHTML = existing.length ? `
+      <label class="field-label">ΕΠΙΛΟΓΗ LINK</label>
+      <select class="field-input" id="al-existing" style="margin-bottom:16px">
+        ${existing.map(l => `<option value="${l.id}">${linkTypeIcon(l.type)} ${(l.label || l.url).slice(0,50).replace(/</g,'&lt;')}</option>`).join('')}
+      </select>
+      <button class="modal-ok" style="width:100%" onclick="submitExistingLinkAttachment()">✓ Σύνδεση</button>
+    ` : `<div style="font-size:12px;color:var(--text3);margin-bottom:10px">— δεν υπάρχουν άλλα διαθέσιμα links —</div>`;
+  }
+}
+
+function attachLinkToEntity(linkId, entityType, entityKey) {
+  const att = {
+    id: 'la_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+    entityType, entityKey: String(entityKey), linkId: String(linkId),
+    created: new Date().toISOString().split('T')[0],
+  };
+  LINK_ATTACHMENTS.push(att);
+  saveLinkAttachments();
+  gsSaveLinkAttachment(att);
+}
+
+function submitNewLinkAttachment() {
+  const overlay = document.getElementById('addlink-overlay');
+  const entityType = overlay.dataset.entityType, entityKey = overlay.dataset.entityKey;
+  const type  = document.getElementById('al-type').value;
+  const label = document.getElementById('al-label').value.trim();
+  const url   = document.getElementById('al-url').value.trim();
+  const errEl = document.getElementById('addlink-error');
+  if (!url) { errEl.textContent = 'Το URL είναι υποχρεωτικό'; errEl.style.display = 'block'; return; }
+
+  const link = {
+    id: 'lnk_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+    url, label, type,
+    created: new Date().toISOString().split('T')[0],
+  };
+  LINKS.push(link);
+  saveLinks();
+  gsSaveLink(link);
+
+  attachLinkToEntity(link.id, entityType, entityKey);
+  overlay.remove();
+  showToast('✓ Το link προστέθηκε');
+  refreshOpenEntityModal(entityType, entityKey);
+}
+
+function submitExistingLinkAttachment() {
+  const overlay = document.getElementById('addlink-overlay');
+  const entityType = overlay.dataset.entityType, entityKey = overlay.dataset.entityKey;
+  const sel = document.getElementById('al-existing');
+  if (!sel || !sel.value) return;
+  attachLinkToEntity(sel.value, entityType, entityKey);
+  overlay.remove();
+  showToast('✓ Συνδέθηκε');
+  refreshOpenEntityModal(entityType, entityKey);
+}
+
+function unlinkFromEntity(attId) {
+  const att = LINK_ATTACHMENTS.find(a => String(a.id) === String(attId));
+  if (!att) return;
+  if (!confirm('Αφαίρεση αυτής της σύνδεσης link;')) return;
+  const entityType = att.entityType, entityKey = att.entityKey;
+
+  LINK_ATTACHMENTS = LINK_ATTACHMENTS.filter(a => String(a.id) !== String(attId));
+  saveLinkAttachments();
+  if (!DELETED_LINKATT_IDS.includes(String(attId))) DELETED_LINKATT_IDS.push(String(attId));
+  saveDeletedLinkAttIds();
+  gsDeleteLinkAttachment(attId).then(ok => {
+    if (ok) { DELETED_LINKATT_IDS = DELETED_LINKATT_IDS.filter(x => x !== String(attId)); saveDeletedLinkAttIds(); }
+  });
+
+  showToast('✓ Αφαιρέθηκε η σύνδεση');
+  refreshOpenEntityModal(entityType, entityKey);
+}
+
+// ── Επεξεργασία/οριστική διαγραφή ενός LINKS row — η αλλαγή ενημερώνεται
+// παντού όπου είναι κουμπωμένο, ακριβώς επειδή είναι ένα κοινό shared row. ──
+function showEditLinkModal(linkId, entityType, entityKey) {
+  const link = LINKS.find(l => String(l.id) === String(linkId));
+  if (!link) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay open';
+  overlay.id = 'editlink-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box" style="max-width:400px;text-align:left;max-height:90vh;overflow-y:auto">
+      <div class="modal-title" style="margin-bottom:6px">✏️ Επεξεργασία Link</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:14px">Η αλλαγή ενημερώνεται παντού όπου είναι κουμπωμένο αυτό το link.</div>
+
+      <label class="field-label">ΤΥΠΟΣ</label>
+      <select class="field-input" id="el-type" style="margin-bottom:10px">
+        ${Object.keys(LINK_TYPE_META).map(k => `<option value="${k}" ${link.type===k?'selected':''}>${LINK_TYPE_META[k].icon} ${LINK_TYPE_META[k].label}</option>`).join('')}
+      </select>
+      <label class="field-label">ΕΤΙΚΕΤΑ</label>
+      <input type="text" class="field-input" id="el-label" value="${(link.label||'').replace(/"/g,'&quot;')}" style="margin-bottom:10px">
+      <label class="field-label">URL *</label>
+      <input type="text" class="field-input" id="el-url" value="${(link.url||'').replace(/"/g,'&quot;')}" style="margin-bottom:16px">
+
+      <div id="el-error" style="color:var(--red2);font-size:13px;margin-bottom:10px;display:none"></div>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <button class="modal-cancel" onclick="document.getElementById('editlink-overlay').remove()">Ακύρωση</button>
+        <button class="modal-ok" style="background:var(--cyan)" onclick="saveEditedLink('${npEsc(link.id)}','${npEsc(entityType)}','${npEsc(entityKey)}')">✓ Αποθήκευση</button>
+      </div>
+      <button onclick="deleteLinkPermanently('${npEsc(link.id)}','${npEsc(entityType)}','${npEsc(entityKey)}')"
+        style="width:100%;background:rgba(200,0,0,0.08);border:1px solid var(--red);border-radius:var(--radius);color:var(--red2);padding:9px;font-family:var(--cond);font-weight:600;font-size:12px;cursor:pointer">
+        🗑 Οριστική διαγραφή link (από όλες τις συνδέσεις)
+      </button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+}
+
+function saveEditedLink(linkId, entityType, entityKey) {
+  const link = LINKS.find(l => String(l.id) === String(linkId));
+  if (!link) return;
+  const type  = document.getElementById('el-type').value;
+  const label = document.getElementById('el-label').value.trim();
+  const url   = document.getElementById('el-url').value.trim();
+  const errEl = document.getElementById('el-error');
+  if (!url) { errEl.textContent = 'Το URL είναι υποχρεωτικό'; errEl.style.display = 'block'; return; }
+
+  link.type = type; link.label = label; link.url = url;
+  saveLinks();
+  gsSaveLink(link);
+
+  document.getElementById('editlink-overlay').remove();
+  showToast('✓ Το link ενημερώθηκε παντού');
+  refreshOpenEntityModal(entityType, entityKey);
+}
+
+function deleteLinkPermanently(linkId, entityType, entityKey) {
+  if (!confirm('Οριστική διαγραφή αυτού του link από ΟΛΕΣ τις συνδέσεις (όλους τους ανιχνευτές/έργα);\nΗ ενέργεια είναι μη αναστρέψιμη.')) return;
+
+  LINKS = LINKS.filter(l => String(l.id) !== String(linkId));
+  saveLinks();
+  if (!DELETED_LINK_IDS.includes(String(linkId))) DELETED_LINK_IDS.push(String(linkId));
+  saveDeletedLinkIds();
+
+  const orphaned = LINK_ATTACHMENTS.filter(a => String(a.linkId) === String(linkId));
+  LINK_ATTACHMENTS = LINK_ATTACHMENTS.filter(a => String(a.linkId) !== String(linkId));
+  saveLinkAttachments();
+  orphaned.forEach(a => {
+    if (!DELETED_LINKATT_IDS.includes(String(a.id))) DELETED_LINKATT_IDS.push(String(a.id));
+  });
+  saveDeletedLinkAttIds();
+
+  gsDeleteLink(linkId).then(ok => {
+    if (ok) { DELETED_LINK_IDS = DELETED_LINK_IDS.filter(x => x !== String(linkId)); saveDeletedLinkIds(); }
+  });
+
+  document.getElementById('editlink-overlay').remove();
+  showToast('✓ Το link διαγράφηκε οριστικά');
+  refreshOpenEntityModal(entityType, entityKey);
+}
+
+// ── Εξαγωγή ΝΕΟΥ ΕΡΓΟΥ σε PDF, ΑΝΑΛΥΤΙΚΑ ανά ανιχνευτή με τις σημειώσεις
+// εγκατάστασης + links (συμπληρώνει το exportNewProjectPDF που είναι η
+// σύνοψη/πίνακας όλου του project). ──
+function exportNewProjectDetailedPDF(projectFilter) {
+  const items = projectFilter === 'ΟΛΑ'
+    ? NEWPROJECT_ITEMS
+    : NEWPROJECT_ITEMS.filter(it => it.project === projectFilter);
+
+  const STATUS_ORDER = [...NP_STATUSES, NP_STATUS_DONE];
+  const ordered = [...items].sort((a,b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status));
+
+  const STATUS_BG = {
+    'ΠΡΟΣ ΕΓΚΑΤΑΣΤΑΣΗ':    '#eceff1',
+    'ΕΓΚΑΤΕΣΤΗΜΕΝΟ':       '#e0ecf8',
+    'ΣΕ ΔΟΚΙΜΗ':           '#fde8d8',
+    'ΕΤΟΙΜΟ ΓΙΑ ΠΑΡΑΔΟΣΗ': '#e0f4e8',
+    [NP_STATUS_DONE]:      '#dde6f0',
+  };
+  const STATUS_FG = {
+    'ΠΡΟΣ ΕΓΚΑΤΑΣΤΑΣΗ':    '#555',
+    'ΕΓΚΑΤΕΣΤΗΜΕΝΟ':       '#0a3a70',
+    'ΣΕ ΔΟΚΙΜΗ':           '#9a5210',
+    'ΕΤΟΙΜΟ ΓΙΑ ΠΑΡΑΔΟΣΗ': '#0a4a20',
+    [NP_STATUS_DONE]:      '#1a3a5a',
+  };
+
+  const blocks = ordered.map((it, i) => {
+    const notes = NP_NOTES.filter(n => n.npId === it.id).sort((a,b) => String(a.date).localeCompare(String(b.date)));
+    const links = getLinksForEntity('NPITEM', it.id);
+
+    const notesHTML = notes.length
+      ? notes.map(n => `
+          <div class="note-row">
+            <span class="note-date">${formatDate(n.date)}</span>
+            <span class="note-text">${(n.text||'').replace(/</g,'&lt;')}</span>
+            ${n.author ? `<span class="note-author">— ${n.author}</span>` : ''}
+          </div>`).join('')
+      : `<div class="note-empty">— χωρίς σημειώσεις —</div>`;
+
+    const linksHTML = links.length
+      ? `<div class="links-row">${links.map(({link}) =>
+          `<a href="${link.url}" target="_blank">${linkTypeIcon(link.type)} ${(link.label || link.url).replace(/</g,'&lt;')}</a>`
+        ).join(' &nbsp;·&nbsp; ')}</div>`
+      : '';
+
+    return `
+      <div class="item-block">
+        <div class="item-head">
+          <span class="item-num">${i+1}</span>
+          <span class="item-tag">${it.tag}</span>
+          <span class="item-status" style="background:${STATUS_BG[it.status]||'#eee'};color:${STATUS_FG[it.status]||'#555'}">${it.status}</span>
+        </div>
+        <div class="item-meta">${it.project||'—'} · ${it.location||'—'}${it.type?(' · '+it.type):''}${it.area?(' · '+it.area):''}${it.technician?(' · 👤 '+it.technician):''}${it.installDate?(' · 📅 '+formatDate(it.installDate)):''}</div>
+        ${linksHTML}
+        <div class="notes-block">${notesHTML}</div>
+      </div>`;
+  }).join('');
+
+  const titleLabel = projectFilter === 'ΟΛΑ' ? 'ΟΛΑ ΤΑ ΕΡΓΑ' : projectFilter;
+
+  const html = `<!DOCTYPE html><html lang="el"><head><meta charset="UTF-8">
+<title>Νέο Έργο - Αναλυτικά - ${titleLabel}</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 0; padding: 16px; background: #fff; color: #222; }
+  .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px; border-bottom:2px solid #1a2535; padding-bottom:10px; }
+  .logo { font-size:18px; font-weight:900; color:#1a2535; letter-spacing:1px; }
+  .logo span { color:#e8620c; }
+  .title { font-size:14px; font-weight:700; color:#1a5fa8; text-align:right; }
+  .subtitle { font-size:11px; color:#666; }
+  .item-block { border:1px solid #e0e0e0; border-radius:6px; padding:10px 12px; margin-bottom:10px; break-inside: avoid; }
+  .item-head { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+  .item-num { font-weight:700; color:#1a5fa8; font-size:12px; min-width:18px; }
+  .item-tag { font-family:monospace; font-weight:700; font-size:14px; flex:1; }
+  .item-status { font-size:9px; font-weight:700; padding:3px 8px; border-radius:8px; white-space:nowrap; }
+  .item-meta { font-size:11px; color:#555; margin-bottom:6px; }
+  .links-row { font-size:11px; margin-bottom:6px; }
+  .links-row a { color:#1a5fa8; text-decoration:none; }
+  .notes-block { border-top:1px dashed #ddd; padding-top:6px; }
+  .note-row { font-size:11px; margin-bottom:4px; }
+  .note-date { font-weight:700; color:#1a5fa8; margin-right:6px; }
+  .note-author { color:#888; font-style:italic; margin-left:6px; }
+  .note-empty { font-size:11px; color:#999; }
+  .footer { margin-top:18px; font-size:10px; color:#999; text-align:center; border-top:1px solid #ddd; padding-top:8px; }
+  .date-row { margin-top:12px; display:flex; justify-content:center; gap:16px; align-items:center; }
+  @media print { .no-print { display:none!important; } }
+</style></head><body>
+<div class="header">
+  <div>
+    <div class="logo">VMR<span>TIN</span>26</div>
+    <div class="subtitle">Motor Oil Refineries · Instruments Dept</div>
+  </div>
+  <div class="title">
+    ΑΝΑΛΥΤΙΚΗ ΑΝΑΦΟΡΑ ΝΕΟΥ ΕΡΓΟΥ<br>
+    <span style="color:#e8620c">${titleLabel}</span>
+  </div>
+</div>
+
+${blocks || '<div style="text-align:center;color:#999;padding:30px">Δεν υπάρχουν ανιχνευτές</div>'}
+
+<div class="footer" id="npd-footer">Motor Oil Refineries · Instruments Dept · VMRTIN26</div>
+<div class="no-print date-row">
+  <label style="font-size:13px;font-weight:600">📅 Ημερομηνία εγγράφου:</label>
+  <input type="text" placeholder="π.χ. 07/06/2026"
+    style="border:1px solid #ccc;border-radius:4px;padding:6px 10px;font-size:13px;width:120px;text-align:center"
+    oninput="document.getElementById('npd-footer').textContent='Motor Oil Refineries · Instruments Dept · VMRTIN26 · '+this.value">
 </div>
 <div class="no-print" style="text-align:center;margin-top:12px">
   <button onclick="window.print()" style="background:#e8620c;color:#fff;border:none;padding:10px 28px;font-size:14px;font-weight:700;border-radius:6px;cursor:pointer;margin-right:8px">🖨 ΕΚΤΥΠΩΣΗ</button>
