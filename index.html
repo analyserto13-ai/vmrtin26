@@ -1728,7 +1728,7 @@ async function gsGet(params) {
       delete window[cbName];
       script.remove();
       reject(new Error('Timeout'));
-    }, 15000);
+    }, 30000);
     window[cbName] = (data) => {
       clearTimeout(timer);
       delete window[cbName];
@@ -3183,6 +3183,7 @@ function renderDetectors(mc) {
       <input type="text" class="search-input" placeholder="${t('search-ph')}" value="${searchQ}" id="search-input" oninput="searchQ=this.value;renderDetectorList()">
       <button class="qr-btn" onclick="openQR('detectors')" title="QR Scan">📷</button>
       <button class="qr-btn" onclick="exportPDF('filtered')" title="Εκτύπωση / Εξαγωγή PDF">🖨️</button>
+      <button class="qr-btn" onclick="exportExcel('filtered')" title="Εξαγωγή Excel">📊</button>
     </div>
     <div class="filter-row">
       ${areas.map(a => `<div class="filter-pill ${filterArea===a?'active':''}" data-area="${a}" onclick="filterArea='${a}';renderDetectorList()">${a==='all'?t('all'):a}</div>`).join('')}
@@ -4053,6 +4054,14 @@ function renderAdmin(mc) {
         📅 Λήγουν 30 μέρες
       </button>
     </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+      <button class="submit-btn" onclick="exportExcel('all')" style="background:var(--green);color:#fff">
+        📊 Excel Όλοι
+      </button>
+      <button class="submit-btn" onclick="exportExcel('upcoming')" style="background:var(--green);color:#fff">
+        📊 Excel Λήγουν 30 μέρες
+      </button>
+    </div>
 
     <!-- INTERVALS PER CATEGORY -->
     <div class="card">
@@ -4813,8 +4822,28 @@ function exportPDF(mode) {
         col5: status === 'overdue' ? '⚠ ΛΗΓΜΕΝΟ' : status === 'soon' ? `${days} μέρες` : d.entries.length + ' εγγρ.'
       };
     });
+  } else if (mode === 'overdue' || mode === 'soon' || mode === 'ok') {
+    // Εξαγωγή ΑΚΡΙΒΩΣ μιας από τις 3 κατηγορίες KPI του dashboard.
+    const filtered = DETECTORS.filter(d => getAlertStatus(d) === mode);
+    kpiSource = filtered;
+    title = { overdue: 'ΛΗΓΜΕΝΟΙ ΑΝΙΧΝΕΥΤΕΣ', soon: 'ΒΑΘΜΟΝΟΜΗΣΗ ≤30 ΜΕΡΕΣ', ok: 'ΕΝΤΟΣ ΠΡΟΓΡΑΜΜΑΤΟΣ' }[mode];
+    subtitle = `${filtered.length} ανιχνευτές · Εξαγωγή: ${new Date().toLocaleDateString('el-GR')}`;
+    rows = filtered
+      .sort((a,b) => (getNextCalDate(a)||'9999').localeCompare(getNextCalDate(b)||'9999'))
+      .map(d => {
+        const days = getDaysUntil(getNextCalDate(d));
+        const status = getAlertStatus(d);
+        return {
+          col1: d.tag,
+          col2: d.location || d.area,
+          col3: d.category,
+          col4: formatDate(getNextCalDate(d)),
+          col5: status === 'overdue' ? '⚠ ΛΗΓΜΕΝΟ' : status === 'soon' ? `${days} μέρες` : d.entries.length + ' εγγρ.'
+        };
+      });
   } else {
     // all detectors summary
+    title = 'ΟΛΟΙ ΟΙ ΑΝΙΧΝΕΥΤΕΣ';
     subtitle = `Σύνολο: ${DETECTORS.length} · Εξαγωγή: ${new Date().toLocaleDateString('el-GR')}`;
     rows = DETECTORS.map(d => ({
       col1: d.tag,
@@ -4939,6 +4968,74 @@ ${mode !== 'detector' ? `
   }
 }
 
+// ══════════════════════════════════════════
+// EXPORT EXCEL — ίδια modes/φιλτράρισμα με exportPDF (all/overdue/soon/ok/
+// filtered/upcoming/detector), μέσω SheetJS (ήδη φορτωμένο για το import).
+// ══════════════════════════════════════════
+function exportExcel(mode) {
+  let title = 'ΟΛΟΙ_ΟΙ_ΑΝΙΧΝΕΥΤΕΣ';
+  let headers = ['TAG','ΤΟΠΟΘΕΣΙΑ / ΠΕΡΙΟΧΗ','ΚΑΤΗΓΟΡΙΑ','ΕΠΟΜΕΝΗ ΒΑΘΜΟΝΟΜΗΣΗ','ΚΑΤΑΣΤΑΣΗ'];
+  let rows = [];
+
+  if (mode === 'detector' && selectedDetector) {
+    title = selectedDetector.tag.replace(/[^Α-Ωα-ωA-Za-z0-9]+/g,'_');
+    headers = ['ΗΜΕΡΟΜΗΝΙΑ','TAG','ΠΕΡΙΓΡΑΦΗ','ΤΕΧΝΙΤΗΣ'];
+    rows = selectedDetector.entries.map(e => [
+      e.date, selectedDetector.tag, selectedDetector.description || selectedDetector.location || '—', e.tech || '—'
+    ]);
+  } else if (mode === 'upcoming') {
+    title = 'ΕΠΟΜΕΝΕΣ_ΒΑΘΜΟΝΟΜΗΣΕΙΣ_30_ΜΕΡΕΣ';
+    const upcoming = DETECTORS
+      .filter(d => { const days = getDaysUntil(getNextCalDate(d)); return days !== null && days <= 30; })
+      .sort((a,b) => (getNextCalDate(a)||'').localeCompare(getNextCalDate(b)||''));
+    rows = upcoming.map(d => [
+      d.tag, formatDate(getNextCalDate(d)), d.location || d.area, d.category,
+      getAlertStatus(d) === 'overdue' ? 'ΛΗΓΜΕΝΟ' : `${getDaysUntil(getNextCalDate(d))} μέρες`
+    ]);
+  } else if (mode === 'filtered') {
+    const filtered = DETECTORS.filter(d => {
+      const areaOk = filterArea === 'all' || d.area === filterArea;
+      const searchOk = !searchQ || d.tag.toLowerCase().includes(searchQ.toLowerCase());
+      return areaOk && searchOk;
+    });
+    title = (filterArea === 'all' ? 'ΑΝΙΧΝΕΥΤΕΣ' : filterArea).replace(/[^Α-Ωα-ωA-Za-z0-9]+/g,'_');
+    rows = filtered.map(d => {
+      const days = getDaysUntil(getNextCalDate(d));
+      const status = getAlertStatus(d);
+      return [
+        d.tag, d.location || d.area, d.category, formatDate(getNextCalDate(d)),
+        status === 'overdue' ? 'ΛΗΓΜΕΝΟ' : status === 'soon' ? `${days} μέρες` : d.entries.length + ' εγγρ.'
+      ];
+    });
+  } else if (mode === 'overdue' || mode === 'soon' || mode === 'ok') {
+    const filtered = DETECTORS.filter(d => getAlertStatus(d) === mode);
+    title = { overdue: 'ΛΗΓΜΕΝΟΙ', soon: 'ΕΩΣ_30_ΜΕΡΕΣ', ok: 'ΕΝΤΟΣ_ΠΡΟΓΡΑΜΜΑΤΟΣ' }[mode];
+    rows = filtered
+      .sort((a,b) => (getNextCalDate(a)||'9999').localeCompare(getNextCalDate(b)||'9999'))
+      .map(d => {
+        const days = getDaysUntil(getNextCalDate(d));
+        const status = getAlertStatus(d);
+        return [
+          d.tag, d.location || d.area, d.category, formatDate(getNextCalDate(d)),
+          status === 'overdue' ? 'ΛΗΓΜΕΝΟ' : status === 'soon' ? `${days} μέρες` : d.entries.length + ' εγγρ.'
+        ];
+      });
+  } else {
+    rows = DETECTORS.map(d => [
+      d.tag, d.location || d.area, d.category, formatDate(getNextCalDate(d)), d.entries.length + ' εγγρ.'
+    ]);
+  }
+
+  loadSheetJS(() => {
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    ws['!cols'] = headers.map(() => ({ wch: 22 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'VMRTIN26');
+    const dateStr = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, `VMRTIN26_${title}_${dateStr}.xlsx`);
+    showToast('✓ Έγινε εξαγωγή Excel');
+  });
+}
 
 // ══ KPI LIST MODAL ══
 function showKpiList(filter) {
@@ -4973,9 +5070,15 @@ function showKpiList(filter) {
           style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text2);padding:6px 12px;cursor:pointer;font-family:var(--font);font-size:14px">
           ← Πίσω
         </button>
-        <div>
+        <div style="flex:1;min-width:0">
           <div style="font-family:var(--cond);font-size:18px;font-weight:700;color:${lbl.color}">${lbl.icon} ${lbl.title}</div>
           <div style="font-size:12px;color:var(--text3)">${filtered.length} ανιχνευτές</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button onclick="exportPDF('${filter}')" title="Εξαγωγή PDF / Εκτύπωση"
+            style="background:var(--blue);border:none;border-radius:var(--radius);color:#fff;width:34px;height:34px;font-size:15px;cursor:pointer;flex-shrink:0">📄</button>
+          <button onclick="exportExcel('${filter}')" title="Εξαγωγή Excel"
+            style="background:var(--green);border:none;border-radius:var(--radius);color:#fff;width:34px;height:34px;font-size:15px;cursor:pointer;flex-shrink:0">📊</button>
         </div>
       </div>
       ${filtered.length === 0 ? `
@@ -5087,9 +5190,9 @@ window.addEventListener('popstate', function() {
 // ══ BACKUP / RESTORE ══
 async function triggerManualBackup() {
   if (!gsConnected) { showToast('Δεν υπάρχει σύνδεση με Sheet', 'error'); return; }
-  showToast('⏳ Backup σε εξέλιξη...');
+  showToast('⏳ Backup σε εξέλιξη... (μπορεί να πάρει λίγα δευτερόλεπτα)');
   try {
-    const res = await gsGet({ action: 'manualBackup' });
+    const res = await gsPost({ action: 'manualBackup' });
     if (res && res.ok) {
       showToast('✓ Backup αποθηκεύτηκε στο VMRTIN26_BACKUP Sheet!');
     } else {
@@ -5829,8 +5932,14 @@ function renderNpProjectDetail(mc) {
           <div style="display:flex;gap:6px;flex-shrink:0">
             <button onclick="showNpItemDetailModal('${it.id}')" title="Σημειώσεις & Links"
               style="background:var(--badge-cyan-bg);border:1px solid var(--cyan);border-radius:var(--radius);color:var(--cyan2);width:30px;height:30px;cursor:pointer;font-size:13px;flex-shrink:0">📝</button>
+            ${ROLES[currentUser.role].canAdmin ? `
+            ${!isDone ? `
+            <button onclick="showAddNpItemModal(null,'${it.id}')" title="Επεξεργασία"
+              style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text2);width:30px;height:30px;cursor:pointer;font-size:13px;flex-shrink:0">✏️</button>
+            ` : ''}
             <button onclick="deleteNpItem('${it.id}')" title="Διαγραφή"
               style="background:rgba(200,0,0,0.08);border:1px solid var(--red);border-radius:var(--radius);color:var(--red2);width:30px;height:30px;cursor:pointer;font-size:13px;flex-shrink:0">🗑</button>
+            ` : ''}
           </div>
         </div>
 
@@ -5866,67 +5975,74 @@ function renderNpProjectDetail(mc) {
   `;
 }
 
-function showAddNpItemModal(presetProject) {
+function showAddNpItemModal(presetProject, editId) {
   if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα','error'); return; }
-  const locked = !!presetProject;
+  const editItem = editId ? NEWPROJECT_ITEMS.find(x => String(x.id) === String(editId)) : null;
+  const isEdit = !!editItem;
+  const locked = !!presetProject && !isEdit;
+
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay open';
   overlay.id = 'addnp-overlay';
   overlay.innerHTML = `
     <div class="modal-box" style="max-width:400px;text-align:left;max-height:90vh;overflow-y:auto">
-      <div class="modal-title" style="margin-bottom:16px">🚧 ${locked ? 'Νέος Ανιχνευτής Έργου' : 'Νέο Έργο'}</div>
+      <div class="modal-title" style="margin-bottom:16px">${isEdit ? '✏️ Επεξεργασία Ανιχνευτή' : (locked ? '🚧 Νέος Ανιχνευτής Έργου' : '🚧 Νέο Έργο')}</div>
 
       <label class="field-label">ΟΝΟΜΑ ΕΡΓΟΥ *</label>
       <input type="text" class="field-input" id="np-project" placeholder="π.χ. ΛΙΜΑΝΙ 2026"
-        value="${locked ? presetProject.replace(/"/g,'&quot;') : ''}" ${locked ? 'readonly' : ''}
-        style="margin-bottom:10px${locked?';opacity:.65':''}">
+        value="${(isEdit ? editItem.project : (locked ? presetProject : '')).replace(/"/g,'&quot;')}"
+        ${(locked || isEdit) ? 'readonly' : ''}
+        style="margin-bottom:10px${(locked||isEdit)?';opacity:.65':''}">
 
       <label class="field-label">TAG *</label>
-      <input type="text" class="field-input" id="np-tag" placeholder="π.χ. 44-GD-099" style="margin-bottom:10px">
+      <input type="text" class="field-input" id="np-tag" placeholder="π.χ. 44-GD-099"
+        value="${isEdit ? editItem.tag.replace(/"/g,'&quot;') : ''}" style="margin-bottom:10px">
 
       <label class="field-label">ΤΟΠΟΘΕΣΙΑ</label>
-      <input type="text" class="field-input" id="np-loc" placeholder="π.χ. C3 Unit - Area 44" style="margin-bottom:10px">
+      <input type="text" class="field-input" id="np-loc" placeholder="π.χ. C3 Unit - Area 44"
+        value="${isEdit ? (editItem.location||'').replace(/"/g,'&quot;') : ''}" style="margin-bottom:10px">
 
       <label class="field-label">ΤΥΠΟΣ</label>
       <select class="field-input" id="np-type" style="margin-bottom:10px">
-        <option value="GAS">GAS</option>
-        <option value="FIRE">FIRE</option>
+        <option value="GAS" ${isEdit && editItem.type==='GAS' ? 'selected' : ''}>GAS</option>
+        <option value="FIRE" ${isEdit && editItem.type==='FIRE' ? 'selected' : ''}>FIRE</option>
       </select>
 
       <label class="field-label">ΠΕΡΙΟΧΗ</label>
       <select class="field-input" id="np-area" style="margin-bottom:10px">
-        ${DET_AREAS.map(a=>`<option value="${a}">${a}</option>`).join('')}
+        ${DET_AREAS.map(a=>`<option value="${a}" ${isEdit && editItem.area===a ? 'selected' : ''}>${a}</option>`).join('')}
       </select>
 
       <label class="field-label">ΚΑΤΗΓΟΡΙΑ</label>
       <select class="field-input" id="np-cat" style="margin-bottom:10px">
-        ${DET_CATEGORIES.map(c=>`<option value="${c}">${c}</option>`).join('')}
+        ${DET_CATEGORIES.map(c=>`<option value="${c}" ${isEdit && editItem.category===c ? 'selected' : ''}>${c}</option>`).join('')}
       </select>
 
       <label class="field-label">ΔΙΑΣΤΗΜΑ ΒΑΘΜΟΝΟΜΗΣΗΣ</label>
       <select class="field-input" id="np-interval" style="margin-bottom:10px">
-        <option value="">Από κατηγορία (default)</option>
-        <option value="2">2 μήνες</option>
-        <option value="4" selected>4 μήνες</option>
-        <option value="6">6 μήνες</option>
-        <option value="12">12 μήνες</option>
+        <option value="" ${isEdit && !editItem.interval ? 'selected' : ''}>Από κατηγορία (default)</option>
+        <option value="2" ${isEdit && editItem.interval==2 ? 'selected' : ''}>2 μήνες</option>
+        <option value="4" ${(!isEdit && true) || (isEdit && editItem.interval==4) ? 'selected' : ''}>4 μήνες</option>
+        <option value="6" ${isEdit && editItem.interval==6 ? 'selected' : ''}>6 μήνες</option>
+        <option value="12" ${isEdit && editItem.interval==12 ? 'selected' : ''}>12 μήνες</option>
       </select>
 
       <label class="field-label">ΗΜ. ΕΓΚΑΤΑΣΤΑΣΗΣ</label>
-      <div style="margin-bottom:10px">${dateMaskInputHTML('np-installdate', new Date().toISOString().split('T')[0], "v => {}", 'width:100%;padding:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);font-family:var(--mono);font-size:14px;box-sizing:border-box')}</div>
+      <div style="margin-bottom:10px">${dateMaskInputHTML('np-installdate', (isEdit && editItem.installDate) ? editItem.installDate : new Date().toISOString().split('T')[0], "v => {}", 'width:100%;padding:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);font-family:var(--mono);font-size:14px;box-sizing:border-box')}</div>
 
       <label class="field-label">ΤΕΧΝΙΤΗΣ</label>
-      <input type="text" class="field-input" id="np-tech" placeholder="π.χ. Γ. Παπαδόπουλος" style="margin-bottom:16px">
+      <input type="text" class="field-input" id="np-tech" placeholder="π.χ. Γ. Παπαδόπουλος"
+        value="${isEdit ? (editItem.technician||'').replace(/"/g,'&quot;') : ''}" style="margin-bottom:16px">
 
       <div id="np-error" style="color:var(--red2);font-size:13px;margin-bottom:10px;display:none"></div>
       <div style="display:flex;gap:8px">
         <button class="modal-cancel" onclick="document.getElementById('addnp-overlay').remove()">Ακύρωση</button>
-        <button class="modal-ok" onclick="submitNewNpItem()" style="background:var(--cyan)">ΠΡΟΣΘΗΚΗ</button>
+        <button class="modal-ok" onclick="${isEdit ? `submitEditNpItem('${npEsc(editItem.id)}')` : 'submitNewNpItem()'}" style="background:var(--cyan)">${isEdit ? 'ΑΠΟΘΗΚΕΥΣΗ' : 'ΠΡΟΣΘΗΚΗ'}</button>
       </div>
     </div>
   `;
   document.body.appendChild(overlay);
-  setTimeout(() => document.getElementById(locked ? 'np-tag' : 'np-project')?.focus(), 100);
+  setTimeout(() => document.getElementById((locked || isEdit) ? 'np-tag' : 'np-project')?.focus(), 100);
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 }
 
@@ -5962,6 +6078,40 @@ function submitNewNpItem() {
   showToast(`✓ ${tag} προστέθηκε στο έργο "${project}"`);
   currentNpProject = project;
   currentNpFilter  = 'ΟΛΑ';
+  renderNewProject(document.getElementById('main-content'));
+}
+
+// Επεξεργασία ΥΠΑΡΧΟΝΤΟΣ ανιχνευτή ΝΕΟΥ ΕΡΓΟΥ (μόνο όσο δεν έχει προαχθεί —
+// μετά την προαγωγή το TAG/η τοποθεσία αλλάζουν μέσα από τον κανονικό
+// ανιχνευτή, ώστε να μην σπάει η σύνδεση με το ιστορικό εγκατάστασης).
+function submitEditNpItem(id) {
+  const it = NEWPROJECT_ITEMS.find(x => String(x.id) === String(id));
+  if (!it) { showToast('Δεν βρέθηκε το item', 'error'); return; }
+
+  const project = document.getElementById('np-project').value.trim();
+  const tag     = document.getElementById('np-tag').value.trim().toUpperCase();
+  const errEl   = document.getElementById('np-error');
+  if (!project) { errEl.textContent='Το όνομα έργου είναι υποχρεωτικό'; errEl.style.display='block'; return; }
+  if (!tag) { errEl.textContent='Το TAG είναι υποχρεωτικό'; errEl.style.display='block'; return; }
+  const tagTaken = DETECTORS.find(d => d.tag === tag) ||
+    NEWPROJECT_ITEMS.find(x => x.tag === tag && String(x.id) !== String(id));
+  if (tagTaken) { errEl.textContent=`Το TAG ${tag} υπάρχει ήδη`; errEl.style.display='block'; return; }
+
+  it.tag         = tag;
+  it.project     = project;
+  it.location    = document.getElementById('np-loc').value.trim();
+  it.area        = document.getElementById('np-area').value;
+  it.type        = document.getElementById('np-type').value;
+  it.category    = document.getElementById('np-cat').value;
+  it.interval    = document.getElementById('np-interval').value ? parseInt(document.getElementById('np-interval').value, 10) : null;
+  it.installDate = document.getElementById('np-installdate__hidden').value;
+  it.technician  = document.getElementById('np-tech').value.trim();
+
+  saveNewProjectItems();
+  gsUpdateNewProjectItem(it);
+
+  document.getElementById('addnp-overlay').remove();
+  showToast(`✓ ${tag} ενημερώθηκε`);
   renderNewProject(document.getElementById('main-content'));
 }
 
