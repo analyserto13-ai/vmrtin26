@@ -2,7 +2,7 @@
 <html lang="el">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>VMRTIN26 — Motor Oil Refineries</title>
 <meta name="version" content="1.0.0">
 <link rel="manifest" href="manifest.json">
@@ -378,6 +378,14 @@ body {
 .nav-item .nav-icon { font-size: 20px; line-height: 1; }
 .nav-item.active { color: var(--accent); }
 .nav-item.active .nav-icon { filter: drop-shadow(0 0 5px rgba(232,98,26,0.5)); }
+.nav-badge {
+  position: absolute; top: 2px; right: 6px;
+  background: var(--red2); color: #fff;
+  font-size: 9px; font-weight: 700; font-family: var(--cond);
+  min-width: 16px; height: 16px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0 3px; line-height: 1; pointer-events: none;
+}
 
 /* ── MAIN CONTENT ── */
 .main-content {
@@ -570,13 +578,21 @@ body {
 /* ── FILTER PILLS ── */
 .filter-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
-  overflow-x: auto;
   padding-bottom: 6px;
   margin-bottom: 14px;
-  scrollbar-width: none;
 }
-.filter-row::-webkit-scrollbar { display: none; }
+
+/* Κινητό: οριζόντιο scroll αντί wrap (πιο compact σε μικρές οθόνες) */
+@media (max-width: 480px) {
+  .filter-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .filter-row::-webkit-scrollbar { display: none; }
+}
 
 .filter-pill {
   background: var(--bg2);
@@ -586,11 +602,11 @@ body {
   font-size: 12px;
   color: var(--text3);
   cursor: pointer;
-  white-space: nowrap;
   font-family: var(--cond);
   font-weight: 600;
   letter-spacing: 0.3px;
   transition: all 0.15s;
+  flex-shrink: 0;
 }
 .filter-pill.active {
   background: var(--accent);
@@ -1323,6 +1339,11 @@ body {
       <span class="nav-icon">⚙️</span>
       <span data-el="nav-admin">Admin</span>
     </button>
+    <button class="nav-item" onclick="showPage('newproject')" id="nav-newproject" style="position:relative">
+      <span class="nav-icon">🚧</span>
+      <span>Έργα</span>
+      <span class="nav-badge" id="nav-np-badge" style="display:none">0</span>
+    </button>
   </nav>
 </div>
 
@@ -1559,6 +1580,7 @@ function saveDeletedNpNoteIds() {
 
 // ── Push μία φιάλη στο Sheet (upsert) ──
 async function gsSaveCylinder(cyl) {
+  if (!gsConnected) { showToast('⚠ Φιάλη αποθηκεύτηκε τοπικά — χωρίς σύνδεση στο Sheet', 'error'); return false; }
   try {
     await gsPost({ action: 'saveCylinder', data: cyl });
     return true;
@@ -1589,6 +1611,7 @@ async function gsSaveNewProjectItem(item) {
     return true;
   } catch(err) {
     console.error('gsSaveNewProjectItem error:', err);
+    showToast('⚠ Αποθηκεύτηκε τοπικά — δεν έφτασε στο Sheet', 'error');
     return false;
   }
 }
@@ -1600,6 +1623,7 @@ async function gsUpdateNewProjectItem(item) {
     return true;
   } catch(err) {
     console.error('gsUpdateNewProjectItem error:', err);
+    showToast('⚠ Ενημερώθηκε τοπικά — δεν έφτασε στο Sheet', 'error');
     return false;
   }
 }
@@ -1611,12 +1635,11 @@ async function gsDeleteNewProjectItem(id) {
     return true;
   } catch(err) {
     console.error('gsDeleteNewProjectItem error:', err);
+    showToast('⚠ Διαγραφή τοπική — δεν έφτασε στο Sheet', 'error');
     return false;
   }
 }
 
-// Μεταφορά στο κανονικό πρόγραμμα: το backend δημιουργεί DETECTORS row
-// ΚΑΙ σβήνει το NEWPROJECT row σε μία ενέργεια (server-side, atomic).
 async function gsPromoteNewProjectItem(item) {
   if (!gsConnected) return false;
   try {
@@ -1624,6 +1647,7 @@ async function gsPromoteNewProjectItem(item) {
     return true;
   } catch(err) {
     console.error('gsPromoteNewProjectItem error:', err);
+    showToast('⚠ Μεταφορά τοπική — δεν έφτασε στο Sheet', 'error');
     return false;
   }
 }
@@ -1632,19 +1656,19 @@ async function gsPromoteNewProjectItem(item) {
 async function gsSaveLink(link) {
   if (!gsConnected) return false;
   try { await gsPost({ action: 'saveLink', data: link }); return true; }
-  catch(err) { console.error('gsSaveLink error:', err); return false; }
+  catch(err) { console.error('gsSaveLink error:', err); showToast('⚠ Link τοπικά — δεν έφτασε στο Sheet', 'error'); return false; }
 }
 async function gsDeleteLink(id) {
   if (!gsConnected) return false;
   try { await gsPost({ action: 'deleteLink', data: { id } }); return true; }
-  catch(err) { console.error('gsDeleteLink error:', err); return false; }
+  catch(err) { console.error('gsDeleteLink error:', err); showToast('⚠ Διαγραφή link τοπική — δεν έφτασε στο Sheet', 'error'); return false; }
 }
 
 // ── LINK_ATTACHMENTS (σύνδεση tag/np-item ↔ link) ──
 async function gsSaveLinkAttachment(att) {
   if (!gsConnected) return false;
   try { await gsPost({ action: 'saveLinkAttachment', data: att }); return true; }
-  catch(err) { console.error('gsSaveLinkAttachment error:', err); return false; }
+  catch(err) { console.error('gsSaveLinkAttachment error:', err); showToast('⚠ Σύνδεση link τοπική — δεν έφτασε στο Sheet', 'error'); return false; }
 }
 async function gsDeleteLinkAttachment(id) {
   if (!gsConnected) return false;
@@ -1656,7 +1680,7 @@ async function gsDeleteLinkAttachment(id) {
 async function gsAddNpNote(note) {
   if (!gsConnected) return false;
   try { await gsPost({ action: 'addNpNote', data: note }); return true; }
-  catch(err) { console.error('gsAddNpNote error:', err); return false; }
+  catch(err) { console.error('gsAddNpNote error:', err); showToast('⚠ Σημείωση τοπική — δεν έφτασε στο Sheet', 'error'); return false; }
 }
 async function gsUpdateNpNote(note) {
   if (!gsConnected) return false;
@@ -2882,6 +2906,27 @@ function loginSuccess(u, user) {
     showPage('dashboard');
     syncFromSheets();
   }
+
+  // ── Αυτόματη επανασύνδεση κάθε 2 λεπτά αν είναι offline ──
+  setInterval(() => {
+    if (!gsConnected && !gsSyncing && navigator.onLine) {
+      showSyncStatus('⟳ Επανασύνδεση...');
+      syncFromSheets();
+    }
+  }, 120000);
+
+  // ── Online event: άμεσο retry όταν ξαναέρθει σύνδεση ──
+  window.addEventListener('online', () => {
+    if (!gsConnected && !gsSyncing) {
+      showSyncStatus('⟳ Σύνδεση αποκαταστάθηκε — συγχρονισμός...');
+      syncFromSheets();
+    }
+  });
+  window.addEventListener('offline', () => {
+    gsConnected = false;
+    const pc = pendingChangesCount();
+    showSyncStatus(pc > 0 ? `✗ Χωρίς σύνδεση · ${pc} εκκρεμούν` : '✗ Χωρίς σύνδεση', 'err');
+  });
 }
 
 function showLoginError() {
@@ -2993,6 +3038,17 @@ async function doChangePassword(targetUser, requireOld) {
 // ══════════════════════════════════════════
 // PAGES
 // ══════════════════════════════════════════
+// ── Badge: αριθμός ΠΡΟΣ ΕΓΚΑΤΑΣΤΑΣΗ σε όλα τα projects ──
+function updateNpBadge() {
+  const badge = document.getElementById('nav-np-badge');
+  if (!badge) return;
+  const count = NEWPROJECT_ITEMS.filter(it =>
+    it.status === 'ΠΡΟΣ ΕΓΚΑΤΑΣΤΑΣΗ' || it.status === 'ΕΓΚΑΤΕΣΤΗΜΕΝΟ' || it.status === 'ΣΕ ΔΟΚΙΜΗ' || it.status === 'ΕΤΟΙΜΟ ΓΙΑ ΠΑΡΑΔΟΣΗ'
+  ).length;
+  badge.textContent = count;
+  badge.style.display = count > 0 ? 'flex' : 'none';
+}
+
 function showPage(page) {
   currentPage = page;
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -3015,6 +3071,8 @@ function showPage(page) {
   else if (page === 'schedule') renderSchedule(mc);
   else if (page === 'cylinders') renderCylinders(mc);
   else if (page === 'newproject') { currentNpProject = null; renderNewProject(mc); }
+
+  updateNpBadge();
 
   mc.scrollTop = 0;
   animateListEntrance(mc);
@@ -3796,13 +3854,13 @@ function renderAdd(mc) {
     </div>
     <div class="form-group">
       <label class="form-label">${t('form-tech')}</label>
-      <select class="form-input" id="add-tech" ${currentUser.role==='technician'?'disabled':''}>
-        ${Object.values(USERS).map(u => {
-          const safe = String(u.name||'').replace(/"/g,'&quot;');
-          const roleLabel = ROLES[u.role] ? ROLES[u.role].label : u.role;
-          return `<option value="${safe}" ${u.name===currentUser.name?'selected':''}>${safe} (${roleLabel})</option>`;
-        }).join('')}
-      </select>
+      <datalist id="tech-list">
+        ${Object.values(USERS).map(u => `<option value="${String(u.name||'').replace(/"/g,'&quot;')}"></option>`).join('')}
+      </datalist>
+      <input type="text" class="form-input" id="add-tech" list="tech-list"
+        value="${String(currentUser.name||'').replace(/"/g,'&quot;')}"
+        placeholder="Όνομα τεχνίτη"
+        ${currentUser.role==='technician' ? 'readonly style="opacity:.75"' : ''}>
     </div>
     <div class="form-group">
       <label class="form-label">${t('form-notes')}</label>
@@ -5791,6 +5849,7 @@ const NP_STATUS_COLOR = {
   [NP_STATUS_DONE]:      'var(--cyan2)',
 };
 let currentNpFilter  = 'ΟΛΑ';
+let npSearchQ = '';
 let currentNpProject = null;   // null = λίστα έργων · string = μέσα σε συγκεκριμένο έργο
 
 function npProjectKey(it) {
@@ -5862,7 +5921,10 @@ function backToNpProjectList() {
 // ══ Επίπεδο 2: μέσα σε ένα έργο — ζωντανοί ανιχνευτές + ιστορικό όσων μεταφέρθηκαν ══
 function renderNpProjectDetail(mc) {
   const items    = NEWPROJECT_ITEMS.filter(it => npProjectKey(it) === currentNpProject);
-  const filtered = items.filter(it => currentNpFilter === 'ΟΛΑ' || it.status === currentNpFilter);
+  const filtered = items.filter(it =>
+    (currentNpFilter === 'ΟΛΑ' || it.status === currentNpFilter) &&
+    (!npSearchQ || it.tag.toLowerCase().includes(npSearchQ.toLowerCase()) || (it.location||'').toLowerCase().includes(npSearchQ.toLowerCase()))
+  );
   const total    = items.length;
   const done     = items.filter(it => it.status === NP_STATUS_DONE).length;
   const ready    = items.filter(it => it.status === 'ΕΤΟΙΜΟ ΓΙΑ ΠΑΡΑΔΟΣΗ').length;
@@ -5904,6 +5966,10 @@ function renderNpProjectDetail(mc) {
         + ΝΕΟΣ ΑΝΙΧΝΕΥΤΗΣ
       </button>
     </div>
+
+    <input type="search" value="${npSearchQ}" placeholder="🔍 TAG ή τοποθεσία..."
+      style="width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);padding:9px 12px;font-size:14px;box-sizing:border-box;margin-bottom:8px"
+      oninput="npSearchQ=this.value;renderNewProject(document.getElementById('main-content'))">
 
     <div style="display:flex;gap:6px;margin-bottom:14px;overflow-x:auto;padding-bottom:2px">
       <button onclick="currentNpFilter='ΟΛΑ';renderNewProject(document.getElementById('main-content'))"
@@ -6047,6 +6113,7 @@ function showAddNpItemModal(presetProject, editId) {
 }
 
 function submitNewNpItem() {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα','error'); return; }
   const project = document.getElementById('np-project').value.trim();
   const tag     = document.getElementById('np-tag').value.trim().toUpperCase();
   const errEl   = document.getElementById('np-error');
@@ -6116,15 +6183,30 @@ function submitEditNpItem(id) {
 }
 
 function setNpStatus(id, status) {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα','error'); return; }
   const it = NEWPROJECT_ITEMS.find(x => String(x.id) === String(id));
   if (!it) return;
+  const prevStatus = it.status;
   it.status = status;
+  // Αυτόματη σημείωση αλλαγής status (Suggestion #7)
+  const autoNote = {
+    id: 'npn_' + Date.now() + '_auto',
+    npId: String(it.id),
+    date: new Date().toISOString().split('T')[0],
+    text: `📋 Αλλαγή status: ${prevStatus} → ${status}`,
+    author: currentUser.name || currentUser.username,
+  };
+  NP_NOTES.push(autoNote);
+  saveNpNotes();
+  gsAddNpNote(autoNote);
   saveNewProjectItems();
   gsUpdateNewProjectItem(it);
+  updateNpBadge();
   renderNewProject(document.getElementById('main-content'));
 }
 
 function deleteNpItem(id) {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα','error'); return; }
   NEWPROJECT_ITEMS = NEWPROJECT_ITEMS.filter(it => String(it.id) !== String(id));
   saveNewProjectItems();
   if (!DELETED_NP_IDS.includes(String(id))) DELETED_NP_IDS.push(String(id));
@@ -6143,6 +6225,7 @@ function deleteNpItem(id) {
 // εγγραφή, nextCalDate = ημ. εγκατάστασης + interval) — ΠΑΡΑΜΕΝΕΙ στο έργο σαν
 // μόνιμο ιστορικό με status ΜΕΤΑΦΕΡΘΗΚΕ ΣΤΟ ΠΡΟΓΡΑΜΜΑ + ημερομηνία μεταφοράς.
 function promoteNpItem(id) {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα','error'); return; }
   const it = NEWPROJECT_ITEMS.find(x => String(x.id) === String(id));
   if (!it) return;
   if (it.status === NP_STATUS_DONE) return;
@@ -6482,6 +6565,7 @@ function renderNpItemDetailModalBody(npId) {
 }
 
 function submitNpNote(npId) {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα','error'); return; }
   const dateEl = document.getElementById('npn-date__hidden');
   const textEl = document.getElementById('npn-text');
   const date = dateEl ? dateEl.value : '';
@@ -6502,6 +6586,7 @@ function submitNpNote(npId) {
 }
 
 function deleteNpNoteUI(noteId) {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα','error'); return; }
   const note = NP_NOTES.find(n => String(n.id) === String(noteId));
   if (!note) return;
   if (!confirm('Διαγραφή αυτής της σημείωσης;')) return;
@@ -6641,6 +6726,7 @@ function submitExistingLinkAttachment() {
 }
 
 function unlinkFromEntity(attId) {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα','error'); return; }
   const att = LINK_ATTACHMENTS.find(a => String(a.id) === String(attId));
   if (!att) return;
   if (!confirm('Αφαίρεση αυτής της σύνδεσης link;')) return;
@@ -6696,6 +6782,7 @@ function showEditLinkModal(linkId, entityType, entityKey) {
 }
 
 function saveEditedLink(linkId, entityType, entityKey) {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα','error'); return; }
   const link = LINKS.find(l => String(l.id) === String(linkId));
   if (!link) return;
   const type  = document.getElementById('el-type').value;
@@ -6714,6 +6801,7 @@ function saveEditedLink(linkId, entityType, entityKey) {
 }
 
 function deleteLinkPermanently(linkId, entityType, entityKey) {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα','error'); return; }
   if (!confirm('Οριστική διαγραφή αυτού του link από ΟΛΕΣ τις συνδέσεις (όλους τους ανιχνευτές/έργα);\nΗ ενέργεια είναι μη αναστρέψιμη.')) return;
 
   LINKS = LINKS.filter(l => String(l.id) !== String(linkId));
@@ -6878,7 +6966,7 @@ function renderCylinders(mc) {
         ${allMonths.map(m => `<option value="${m}" ${m===currentCylMonth?'selected':''}>${getMonthLabel(m)}</option>`).join('')}
       </select>
       <button onclick="showNewMonthModal()"
-        style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text2);padding:8px 12px;font-size:18px;cursor:pointer">
+        style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text2);padding:8px 12px;font-size:18px;cursor:pointer;${!ROLES[currentUser.role].canAdd?'opacity:.35;pointer-events:none':''}">
         +
       </button>
       <button onclick="exportCylindersPDF('${currentCylMonth}')"
@@ -6954,11 +7042,13 @@ function renderCylinders(mc) {
       `}
     </div>
 
-    <!-- Κουμπί νέας φιάλης -->
+    <!-- Κουμπί νέας φιάλης — μόνο admin/technician -->
+    ${ROLES[currentUser.role].canAdd ? `
     <button onclick="showAddCylinderModal('${currentCylMonth}')"
       style="width:100%;background:var(--accent);border:none;border-radius:var(--radius);color:#fff;padding:12px;font-family:var(--cond);font-weight:700;font-size:14px;cursor:pointer;letter-spacing:0.5px">
       + ΝΕΑ ΚΑΤΑΧΩΡΗΣΗ ΦΙΑΛΗΣ
     </button>
+    ` : ''}
   `;
 }
 
@@ -6974,6 +7064,7 @@ function isExpired(dateStr) {
 }
 
 function toggleCylStatus(id) {
+  if (!ROLES[currentUser.role].canAdd) { showToast('Δεν έχεις δικαίωμα', 'error'); return; }
   const idx = CYLINDERS.findIndex(c => String(c.id) === String(id));
   if (idx < 0) return;
   const prev = CYLINDERS[idx].status || 'ΕΝΕΡΓΗ';
@@ -6985,6 +7076,7 @@ function toggleCylStatus(id) {
 }
 
 function showAddCylinderModal(monthKey) {
+  if (!ROLES[currentUser.role].canAdd) { showToast('Δεν έχεις δικαίωμα', 'error'); return; }
   const nextNum = getNextCylNum(monthKey);
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay open';
@@ -7068,6 +7160,7 @@ async function saveCylinder(monthKey) {
 }
 
 function editCylinder(id) {
+  if (!ROLES[currentUser.role].canAdd) { showToast('Δεν έχεις δικαίωμα', 'error'); return; }
   const cyl = CYLINDERS.find(c => String(c.id) === String(id));
   if (!cyl) { showToast('Η φιάλη δεν βρέθηκε','error'); return; }
   const overlay = document.createElement('div');
