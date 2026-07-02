@@ -7,6 +7,15 @@
 <meta name="version" content="1.0.0">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#15181D">
+<script>
+  // Φόρτωσε το theme ΑΜΕΣΩΣ πριν render οτιδήποτε — αποτρέπει το "λευκό flash"
+  (function() {
+    const saved = localStorage.getItem('vmrtin26_theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', saved);
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.content = saved === 'light' ? '#F4F5F7' : '#15181D';
+  })();
+</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="VMRTIN26">
@@ -67,6 +76,39 @@
   --on-accent: #1C1410;  /* κείμενο πάνω σε accent-χρωματισμένα κουμπιά */
 }
 
+/* ══ LIGHT THEME ══ */
+[data-theme="light"] {
+  --bg:      #F4F5F7;
+  --bg2:     #FFFFFF;
+  --bg3:     #EBEDF0;
+  --bg4:     #DDE0E5;
+  --border:  #D0D4DB;
+  --border2: #B8BCC4;
+
+  --text:    #1A1D22;
+  --text2:   #4A5060;
+  --text3:   #8B919D;
+
+  --accent:  #C27040;
+  --accent2: #D4845A;
+
+  --blue:    #2E6EA6;  --blue2:   #3A7DB8;
+  --green:   #2E7D4F;  --green2:  #3A9060;
+  --red:     #B04040;  --red2:    #C05050;
+  --purple:  #5A4E8A;  --purple2: #6A5E9A;
+  --cyan:    #2E7A74;  --cyan2:   #3A8A84;
+
+  --badge-blue-bg:    rgba(46,110,166,0.10);  --badge-blue-bd:    rgba(46,110,166,0.28);
+  --badge-green-bg:   rgba(46,125,79,0.10);   --badge-green-bd:   rgba(46,125,79,0.28);
+  --badge-red-bg:     rgba(176,64,64,0.10);   --badge-red-bd:     rgba(176,64,64,0.28);
+  --badge-purple-bg:  rgba(90,78,138,0.10);   --badge-purple-bd:  rgba(90,78,138,0.28);
+  --badge-cyan-bg:    rgba(46,122,116,0.10);  --badge-cyan-bd:    rgba(46,122,116,0.28);
+  --badge-amber-bg:   rgba(194,112,64,0.10);  --badge-amber-bd:   rgba(194,112,64,0.28);
+  --badge-neutral-bg: rgba(74,80,96,0.08);    --badge-neutral-bd: rgba(74,80,96,0.22);
+
+  --on-accent: #FFFFFF;
+}
+
 * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
 
 body {
@@ -86,8 +128,8 @@ body {
   justify-content: center;
   min-height: 100vh;
   padding: 24px;
-  background:
-    linear-gradient(160deg, #0F1216 0%, #15181D 60%, #181C22 100%);
+  background: var(--bg);
+  background-image: linear-gradient(160deg, color-mix(in srgb, var(--bg) 85%, #000) 0%, var(--bg) 60%, color-mix(in srgb, var(--bg) 90%, var(--accent)) 100%);
 }
 
 .login-card {
@@ -1271,6 +1313,11 @@ body {
 
 <!-- ══ LOGIN SCREEN ══ -->
 <div id="login-screen">
+  <!-- Theme toggle πάνω-δεξιά στη login οθόνη -->
+  <button onclick="toggleTheme()" id="login-theme-btn"
+    style="position:absolute;top:16px;right:16px;background:var(--bg3);border:1px solid var(--border);border-radius:50%;width:38px;height:38px;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center">
+    🌙
+  </button>
   <div class="login-card">
     <div class="login-logo">
       <div class="logo-icon">🔥</div>
@@ -1299,6 +1346,7 @@ body {
     </div>
     <div class="topbar-right">
       <button class="lang-btn" onclick="toggleLang()">EL/EN</button>
+      <button class="icon-btn" onclick="toggleTheme()" id="theme-btn" title="Εναλλαγή θέματος" style="font-size:15px">🌙</button>
       <button class="icon-btn" onclick="syncFromSheets()" title="Συγχρονισμός" style="font-size:14px">⟳</button>
       <div class="user-pill" onclick="showChangePassword(currentUser.username)" title="Αλλαγή κωδικού">
         <div class="user-avatar" id="user-avatar" style="background:#7f1d1d;color:#fca5a5;">A</div>
@@ -1691,6 +1739,28 @@ async function gsDeleteNpNote(id) {
   if (!gsConnected) return false;
   try { await gsPost({ action: 'deleteNpNote', data: { id } }); return true; }
   catch(err) { console.error('gsDeleteNpNote error:', err); return false; }
+}
+
+// ════════════════════════════════════════
+// ACTIVITY LOG — fire-and-forget, δεν μπλοκάρει ποτέ το UI
+// Καλείται από κάθε σημαντική ενέργεια (login, εγγραφή, διαγραφή κλπ.)
+// ════════════════════════════════════════
+function logActivity(action, details) {
+  if (!gsConnected || !currentUser) return;
+  const entry = {
+    id: 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2,5),
+    timestamp: new Date().toISOString(),
+    user: currentUser.name || currentUser.username,
+    role: currentUser.role,
+    action, details: String(details || ''),
+  };
+  // Αποθήκευσε και τοπικά (τελευταίες 100 ενέργειες για offline εμφάνιση)
+  const local = JSON.parse(localStorage.getItem('vmrtin26_activity_log') || '[]');
+  local.unshift(entry);
+  if (local.length > 100) local.length = 100;
+  localStorage.setItem('vmrtin26_activity_log', JSON.stringify(local));
+  // Στείλε ασύγχρονα στο Sheet (χωρίς await — δεν ενδιαφέρει η απάντηση)
+  gsPost({ action: 'addActivityLog', data: entry }).catch(() => {});
 }
 
 function getCurrentMonthKey() {
@@ -2719,6 +2789,28 @@ function toggleLang() {
   if (currentPage) showPage(currentPage);
 }
 
+// ── THEME (dark/light) ──
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  // Ενημέρωσε ΚΑΙ τα δύο κουμπιά (login + topbar)
+  const icon = theme === 'light' ? '☀️' : '🌙';
+  ['theme-btn','login-theme-btn'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.textContent = icon;
+  });
+  // PWA status bar color
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = theme === 'light' ? '#F4F5F7' : '#15181D';
+  localStorage.setItem('vmrtin26_theme', theme);
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme') || 'dark';
+  applyTheme(current === 'dark' ? 'light' : 'dark');
+}
+
+// Βοηθητική για offline status message — ορισμός στη γραμμή 1556
+
 // ══════════════════════════════════════════
 // AUTH — SHA-256 HASHED PASSWORDS
 // ══════════════════════════════════════════
@@ -2887,7 +2979,12 @@ function loginSuccess(u, user) {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
   document.getElementById('app').style.flexDirection = 'column';
+  // Σιγουρέψου ότι το icon του topbar theme-btn είναι συγχρονισμένο
+  const savedTheme = localStorage.getItem('vmrtin26_theme') || 'dark';
+  applyTheme(savedTheme);
   setupUser();
+  // Log ΜΕΤΑ από setupUser ώστε currentUser να είναι έτοιμο
+  setTimeout(() => logActivity('LOGIN', `Είσοδος χρήστη "${currentUser.name||currentUser.username}" (${currentUser.role})`), 500);
 
   // Έλεγξε αν υπάρχει ?tag= στο URL
   const urlTag = new URLSearchParams(window.location.search).get('tag');
@@ -2943,6 +3040,7 @@ document.addEventListener('keydown', e => {
 });
 
 function doLogout() {
+  logActivity('LOGOUT', `Έξοδος χρήστη "${currentUser?.name||currentUser?.username}"`);
   currentUser = null;
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('app').style.display = 'none';
@@ -3521,6 +3619,7 @@ function saveEditedEntry(tag, idx) {
   });
 
   document.getElementById('editentry-overlay').remove();
+  logActivity('EDIT_ENTRY', `${tag} · ${date} · ${task}`);
   showToast('✓ Η εγγραφή ενημερώθηκε');
   renderDetectorDetail(document.getElementById('main-content'));
 }
@@ -3534,6 +3633,7 @@ function deleteHistoryEntry(tag, idx) {
   det.entries.splice(idx, 1);
   saveDetectors();
   gsDeleteEntry({ tag, date: orig.date, tech: orig.tech });
+  logActivity('DELETE_ENTRY', `${tag} · ${orig.date} · ${orig.task||'—'}`);
 
   document.getElementById('editentry-overlay')?.remove();
   showToast('✓ Η εγγραφή διαγράφηκε');
@@ -3689,6 +3789,7 @@ function saveTagRename(oldTag) {
   saveDetectors();
   if (selectedDetector && selectedDetector.tag === oldTag) selectedDetector = det;
   gsRenameDetector({ oldTag, newTag });
+  logActivity('RENAME_DETECTOR', `${oldTag} → ${newTag}`);
 
   showToast(`✓ Μετονομάστηκε σε ${newTag}`);
   renderDetectorDetail(document.getElementById('main-content'));
@@ -3713,6 +3814,7 @@ function deleteDetectorCompletely(tag) {
       saveDeletedDetTags();
     }
   });
+  logActivity('DELETE_DETECTOR', `${tag} · ${entCount} εγγραφές`);
 
   showToast(`✓ Ο ${tag} διαγράφηκε ολοκληρωτικά`);
   showPage(detectorDetailOrigin);
@@ -3909,6 +4011,7 @@ function submitEntry() {
     tag, date, task: taskStr, cylinder: cyl, tech, notes,
     calInterval: getIntervalMonths(det),
   });
+  logActivity('ADD_ENTRY', `${tag} · ${date} · ${taskStr} · Τεχνίτης: ${tech}${cyl?' · '+cyl:''}`);
 
   // Auto-update next cal date για ΚΑΘΕ τύπο εργασίας συντήρησης
   // (Βαθμονόμηση, Αλλαγή αισθητήρα, Αλλαγή κάρτας, Αλλαγή καλωδίου, Άλλο)
@@ -4094,6 +4197,18 @@ function renderAdmin(mc) {
           </button>
         </div>
       </div>
+    </div>
+
+    <!-- ACTIVITY LOG -->
+    <div class="card" style="border-color:var(--purple);border-top:2px solid var(--purple);margin-bottom:12px">
+      <div class="card-title" style="color:var(--purple)">📋 ΙΣΤΟΡΙΚΟ ΕΝΕΡΓΕΙΩΝ (AUDIT LOG)</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px">
+        Ποιος χρήστης μπήκε, τι άλλαξε και πότε — εξαγωγή σε PDF.
+      </div>
+      <button onclick="showActivityLogModal()"
+        style="width:100%;background:var(--purple);border:none;border-radius:var(--radius);color:#fff;padding:10px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer;letter-spacing:0.5px">
+        👁 ΠΡΟΒΟΛΗ ΙΣΤΟΡΙΚΟΥ
+      </button>
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
@@ -4505,6 +4620,7 @@ function submitNewDetector() {
   // Save to Google Sheets
   gsSaveDetector({ tag, description: desc, location: loc, type, area,
     category: cat, calInterval: interval || '', nextCalDate: nextCal || '' });
+  logActivity('ADD_DETECTOR', `${tag} · ${loc} · ${area} · ${type}`);
 
   // Save to localStorage
   saveDetectors();
@@ -5262,6 +5378,217 @@ async function triggerManualBackup() {
 }
 
 // ── Λίστα διαθέσιμων backups από το VMRTIN26_BACKUP Sheet ──
+// ════════════════════════════════════════
+// ACTIVITY LOG MODAL — admin only
+// Φορτώνει τελευταίες 500 εγγραφές από Sheet (ή τοπικό cache αν offline)
+// Φίλτρα: χρήστης, τύπος ενέργειας
+// Εξαγωγή σε PDF
+// ════════════════════════════════════════
+const ACTION_LABELS = {
+  LOGIN:           { icon:'🔑', label:'Είσοδος' },
+  LOGOUT:          { icon:'🚪', label:'Έξοδος' },
+  ADD_ENTRY:       { icon:'✅', label:'Νέα εγγραφή' },
+  EDIT_ENTRY:      { icon:'✏️', label:'Επεξεργασία εγγραφής' },
+  DELETE_ENTRY:    { icon:'🗑', label:'Διαγραφή εγγραφής' },
+  ADD_DETECTOR:    { icon:'➕', label:'Νέος ανιχνευτής' },
+  RENAME_DETECTOR: { icon:'🔄', label:'Μετονομασία' },
+  DELETE_DETECTOR: { icon:'❌', label:'Διαγραφή ανιχνευτή' },
+  ADD_NP_ITEM:     { icon:'🚧', label:'Νέο έργο' },
+  PROMOTE_NP:      { icon:'🚀', label:'Μεταφορά στο πρόγραμμα' },
+  NP_STATUS_CHANGE:{ icon:'📋', label:'Αλλαγή status' },
+  ADD_CYLINDER:    { icon:'🧪', label:'Νέα φιάλη' },
+  DELETE_CYLINDER: { icon:'🗑', label:'Διαγραφή φιάλης' },
+  ADD_NP_NOTE:     { icon:'📝', label:'Νέα σημείωση' },
+  DELETE_NP_NOTE:  { icon:'🗑', label:'Διαγραφή σημείωσης' },
+  ADD_LINK:        { icon:'📎', label:'Νέο link' },
+  DELETE_LINK:     { icon:'🗑', label:'Διαγραφή link' },
+  BACKUP:          { icon:'💾', label:'Backup' },
+};
+
+async function showActivityLogModal() {
+  if (!ROLES[currentUser.role].canAdmin) return;
+
+  let logs = JSON.parse(localStorage.getItem('vmrtin26_activity_log') || '[]');
+  let fromSheet = false;
+  if (gsConnected) {
+    try {
+      showToast('⏳ Φόρτωση ιστορικού...');
+      const res = await gsGet({ action: 'getActivityLog', limit: '500' });
+      if (res && res.logs) { logs = res.logs; fromSheet = true; }
+    } catch(e) { /* χρησιμοποίησε τοπικό */ }
+  }
+
+  let filterUser = '', filterAction = '';
+  const allUsers   = [...new Set(logs.map(l => l.user))].sort();
+  const allActions = [...new Set(logs.map(l => l.action))].sort();
+
+  function renderLogs() {
+    const filtered = logs.filter(l =>
+      (!filterUser   || l.user === filterUser) &&
+      (!filterAction || l.action === filterAction)
+    );
+    const rows = filtered.map(l => {
+      const meta = ACTION_LABELS[l.action] || { icon:'•', label: l.action };
+      const ts = l.timestamp ? l.timestamp.replace('T',' ').slice(0,16) : '—';
+      return `
+        <div style="display:grid;grid-template-columns:110px auto;gap:6px;padding:8px 0;border-bottom:1px solid var(--border)">
+          <div>
+            <div style="font-size:10px;color:var(--text3);font-family:var(--mono)">${ts}</div>
+            <div style="font-size:11px;font-weight:700;color:var(--text2);margin-top:2px">${l.user||'—'}</div>
+            <div style="font-size:9px;color:var(--text3)">${l.role||''}</div>
+          </div>
+          <div>
+            <div style="font-size:11px;font-family:var(--cond);font-weight:700;color:var(--purple)">
+              ${meta.icon} ${meta.label}
+            </div>
+            <div style="font-size:11px;color:var(--text2);margin-top:2px;word-break:break-word">${l.details||''}</div>
+          </div>
+        </div>`;
+    }).join('');
+    return `
+      <div style="font-size:11px;color:var(--text3);margin-bottom:8px">
+        ${filtered.length} εγγραφές ${fromSheet ? '(από Sheet)' : '(τοπικό cache)'}
+      </div>
+      ${rows || '<div style="color:var(--text3);font-size:13px;text-align:center;padding:20px">— Δεν βρέθηκαν εγγραφές —</div>'}
+    `;
+  }
+
+  const existing = document.getElementById('activity-log-overlay');
+  if (existing) existing.remove();
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay open';
+  overlay.id = 'activity-log-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box" style="max-width:500px;text-align:left;max-height:92vh;display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-shrink:0">
+        <div style="flex:1;font-family:var(--cond);font-size:18px;font-weight:700;color:var(--purple)">📋 ΙΣΤΟΡΙΚΟ ΕΝΕΡΓΕΙΩΝ</div>
+        <button onclick="exportActivityLogPDF()" title="Εξαγωγή PDF"
+          style="background:var(--blue);border:none;border-radius:var(--radius);color:#fff;padding:7px 10px;font-size:13px;cursor:pointer;font-weight:700">📄 PDF</button>
+        <button onclick="exportActivityLogExcel()" title="Εξαγωγή Excel"
+          style="background:var(--green);border:none;border-radius:var(--radius);color:#fff;padding:7px 10px;font-size:13px;cursor:pointer;font-weight:700">📊 Excel</button>
+        <button onclick="document.getElementById('activity-log-overlay').remove()"
+          style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text2);padding:7px 10px;font-size:13px;cursor:pointer">✕</button>
+      </div>
+
+      <!-- Φίλτρα -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;flex-shrink:0">
+        <select class="field-input" id="al-filter-user" style="margin:0" onchange="
+          window._alFilterUser=this.value;
+          document.getElementById('al-log-body').innerHTML=window._alRenderLogs();">
+          <option value="">— Όλοι οι χρήστες —</option>
+          ${allUsers.map(u => `<option value="${u}">${u}</option>`).join('')}
+        </select>
+        <select class="field-input" id="al-filter-action" style="margin:0" onchange="
+          window._alFilterAction=this.value;
+          document.getElementById('al-log-body').innerHTML=window._alRenderLogs();">
+          <option value="">— Όλες οι ενέργειες —</option>
+          ${allActions.map(a => {
+            const meta = ACTION_LABELS[a] || { icon:'•', label:a };
+            return `<option value="${a}">${meta.icon} ${meta.label}</option>`;
+          }).join('')}
+        </select>
+      </div>
+
+      <!-- Λίστα εγγραφών -->
+      <div id="al-log-body" style="overflow-y:auto;flex:1">${renderLogs()}</div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+  // Expose για onchange
+  window._alFilterUser   = '';
+  window._alFilterAction = '';
+  window._alLogs = logs;
+  window._alRenderLogs = () => {
+    filterUser   = window._alFilterUser;
+    filterAction = window._alFilterAction;
+    return renderLogs();
+  };
+}
+
+function exportActivityLogPDF() {
+  const logs = window._alLogs || JSON.parse(localStorage.getItem('vmrtin26_activity_log') || '[]');
+  const fu = window._alFilterUser || '', fa = window._alFilterAction || '';
+  const filtered = logs.filter(l =>
+    (!fu || l.user === fu) && (!fa || l.action === fa)
+  );
+
+  const rows = filtered.map((l, i) => {
+    const meta = ACTION_LABELS[l.action] || { icon:'•', label: l.action };
+    const ts = l.timestamp ? l.timestamp.replace('T',' ').slice(0,16) : '—';
+    const bg = i % 2 === 0 ? '#f9f9f9' : '#fff';
+    return `<tr style="background:${bg}">
+      <td style="padding:5px 8px;font-size:11px;font-family:monospace;white-space:nowrap">${ts}</td>
+      <td style="padding:5px 8px;font-size:11px;font-weight:700">${l.user||'—'}</td>
+      <td style="padding:5px 8px;font-size:10px;color:#666">${l.role||''}</td>
+      <td style="padding:5px 8px;font-size:11px;font-weight:600;color:#5A4E8A">${meta.icon} ${meta.label}</td>
+      <td style="padding:5px 8px;font-size:11px">${(l.details||'').replace(/</g,'&lt;')}</td>
+    </tr>`;
+  }).join('');
+
+  const html = `<!DOCTYPE html><html lang="el"><head><meta charset="UTF-8">
+<title>Audit Log — VMRTIN26</title>
+<style>
+  body { font-family:Arial,sans-serif; margin:0; padding:16px; }
+  .hdr { display:flex; justify-content:space-between; align-items:flex-start;
+         margin-bottom:14px; border-bottom:2px solid #1a2535; padding-bottom:10px; }
+  .logo { font-size:18px; font-weight:900; color:#1a2535; letter-spacing:1px; }
+  .logo span { color:#e8620c; }
+  .title { font-size:13px; font-weight:700; color:#5A4E8A; text-align:right; }
+  table { width:100%; border-collapse:collapse; font-size:11px; }
+  th { background:#1a2535; color:#60aaee; padding:6px 8px; text-align:left; font-size:10px; }
+  .footer { margin-top:14px; font-size:10px; color:#999; text-align:center; border-top:1px solid #ddd; padding-top:8px; }
+  @media print { .no-print { display:none!important; } }
+</style></head><body>
+<div class="hdr">
+  <div><div class="logo">VMR<span>TIN</span>26</div>
+    <div style="font-size:11px;color:#888">Motor Oil Refineries · Instruments Dept</div></div>
+  <div class="title">ΙΣΤΟΡΙΚΟ ΕΝΕΡΓΕΙΩΝ (AUDIT LOG)<br>
+    <span style="color:#e8620c;font-size:11px">${filtered.length} εγγραφές${fu?' · '+fu:''}${fa?' · '+fa:''}</span>
+  </div>
+</div>
+<table>
+  <thead><tr>
+    <th>ΧΡΟΝΟΣ</th><th>ΧΡΗΣΤΗΣ</th><th>ΡΟΛΟΣ</th><th>ΕΝΕΡΓΕΙΑ</th><th>ΛΕΠΤΟΜΕΡΕΙΕΣ</th>
+  </tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+<div class="footer">Motor Oil Refineries · Instruments Dept · VMRTIN26 · ${new Date().toLocaleDateString('el-GR')}</div>
+<div class="no-print" style="text-align:center;margin-top:14px">
+  <button onclick="window.print()" style="background:#5A4E8A;color:#fff;border:none;padding:10px 28px;font-size:14px;font-weight:700;border-radius:6px;cursor:pointer">🖨 ΕΚΤΥΠΩΣΗ</button>
+</div>
+</body></html>`;
+
+  const blob = new Blob([html], { type:'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, '_blank');
+  if (!win) showToast('Επίτρεψε τα pop-ups', 'error');
+  else setTimeout(() => URL.revokeObjectURL(url), 3000);
+}
+
+function exportActivityLogExcel() {
+  const logs = window._alLogs || JSON.parse(localStorage.getItem('vmrtin26_activity_log') || '[]');
+  const fu = window._alFilterUser || '', fa = window._alFilterAction || '';
+  const filtered = logs.filter(l => (!fu || l.user === fu) && (!fa || l.action === fa));
+
+  loadSheetJS(() => {
+    const headers = ['ΧΡΟΝΟΣ','ΧΡΗΣΤΗΣ','ΡΟΛΟΣ','ΕΝΕΡΓΕΙΑ','ΛΕΠΤΟΜΕΡΕΙΕΣ'];
+    const rows = filtered.map(l => [
+      l.timestamp ? l.timestamp.replace('T',' ').slice(0,16) : '—',
+      l.user||'—', l.role||'—',
+      (ACTION_LABELS[l.action]||{label:l.action}).label,
+      l.details||'',
+    ]);
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    ws['!cols'] = [{ wch:18 },{ wch:16 },{ wch:12 },{ wch:22 },{ wch:40 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'ActivityLog');
+    XLSX.writeFile(wb, `VMRTIN26_ActivityLog_${new Date().toISOString().split('T')[0]}.xlsx`);
+    showToast('✓ Εξαγωγή Excel ολοκληρώθηκε');
+  });
+}
+
 async function showRestoreBackupModal() {
   if (!gsConnected) { showToast('Δεν υπάρχει σύνδεση με Sheet', 'error'); return; }
   showToast('⏳ Φόρτωση λίστας backups...');
@@ -6140,6 +6467,7 @@ function submitNewNpItem() {
   NEWPROJECT_ITEMS.push(item);
   saveNewProjectItems();
   gsSaveNewProjectItem(item);
+  logActivity('ADD_NP_ITEM', `${tag} · ${project}`);
 
   document.getElementById('addnp-overlay').remove();
   showToast(`✓ ${tag} προστέθηκε στο έργο "${project}"`);
@@ -6252,6 +6580,7 @@ function promoteNpItem(id) {
   it.promotedDate = new Date().toISOString().split('T')[0];
   saveNewProjectItems();
   gsUpdateNewProjectItem(it);
+  logActivity('PROMOTE_NP', `${it.tag} → Κανονικό πρόγραμμα · Έργο: ${it.project}`);
 
   showToast(`✓ ${it.tag} μεταφέρθηκε στο κανονικό πρόγραμμα`);
   renderNewProject(document.getElementById('main-content'));
