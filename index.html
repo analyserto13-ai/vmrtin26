@@ -8,6 +8,31 @@
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#15181D">
 <script>
+  // ── VERSION-BASED FORCE UPDATE ──
+  // Αλλάζοντας το APP_VERSION, η εφαρμογή αναγκάζει:
+  // (1) διαγραφή ΟΛΩΝ των caches, (2) unregister του SW, (3) hard reload.
+  // Λύνει το πρόβλημα των PWA που αγνοούν ακόμα και νέα sw.js.
+  const APP_VERSION = '20250707_01';
+  const storedVer   = localStorage.getItem('vmrtin26_app_version');
+  if (storedVer !== APP_VERSION) {
+    localStorage.setItem('vmrtin26_app_version', APP_VERSION);
+    // Σβήσε όλα τα SW caches
+    if ('caches' in window) {
+      caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))));
+    }
+    // Unregister SW ώστε να ξαναεγκατασταθεί
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(regs => {
+        Promise.all(regs.map(r => r.unregister())).then(() => {
+          window.location.reload(true); // hard reload — παρακάμπτει HTTP cache
+        });
+      });
+    } else {
+      window.location.reload(true);
+    }
+  }
+</script>
+<script>
   // Φόρτωσε το theme ΑΜΕΣΩΣ πριν render οτιδήποτε — αποτρέπει το "λευκό flash"
   (function() {
     const saved = localStorage.getItem('vmrtin26_theme') || 'dark';
