@@ -2935,6 +2935,7 @@ initPasswords();
 async function doLogin() {
   const u = document.getElementById('login-user').value.trim();
   const p = document.getElementById('login-pass').value;
+  if (!u || !p) { showLoginError(); return; }
   const inputHash = await hashPassword(p);
 
   // Πρώτα έλεγξε τοπικά (hardcoded + localStorage)
@@ -3358,7 +3359,12 @@ function renderDetectorList() {
 
   const filtered = DETECTORS.filter(d => {
     const areaOk = filterArea === 'all' || d.area === filterArea;
-    const searchOk = !searchQ || d.tag.toLowerCase().includes(searchQ.toLowerCase());
+    const q = searchQ.toLowerCase();
+    const searchOk = !searchQ
+      || d.tag.toLowerCase().includes(q)
+      || (d.location||'').toLowerCase().includes(q)
+      || (d.area||'').toLowerCase().includes(q)
+      || (d.description||'').toLowerCase().includes(q);
     return areaOk && searchOk;
   });
 
@@ -3439,7 +3445,7 @@ function renderDetectorDetail(mc) {
     </div>
     ${ROLES[currentUser.role].canAdmin ? `
     <div style="display:none;align-items:center;gap:6px;margin:2px 0 8px 0" id="tag-edit-${d.tag}">
-      <input id="tag-input-${d.tag}" type="text" value="${d.tag}" style="font-size:15px;font-family:var(--mono);padding:4px 8px;border:1px solid var(--accent);border-radius:6px;background:var(--bg3);color:var(--text1);width:160px;text-transform:uppercase"
+      <input id="tag-input-${d.tag}" type="text" value="${d.tag}" style="font-size:15px;font-family:var(--mono);padding:4px 8px;border:1px solid var(--accent);border-radius:6px;background:var(--bg3);color:var(--text);width:160px;text-transform:uppercase"
         onkeydown="if(event.key==='Enter')saveTagRename('${d.tag}');if(event.key==='Escape')cancelEditTag('${d.tag}')">
       <button onclick="saveTagRename('${d.tag}')" style="background:var(--green);color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;font-family:var(--cond);font-weight:700">✓</button>
       <button onclick="cancelEditTag('${d.tag}')" style="background:var(--bg4);color:var(--text2);border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">✕</button>
@@ -3453,7 +3459,7 @@ function renderDetectorDetail(mc) {
       </div>
       <div style="display:none;align-items:center;gap:6px;margin:6px 0 2px 0" id="loc-edit-${d.tag}">
         <input id="loc-input-${d.tag}" type="text" value="${d.location||''}" placeholder="π.χ. K-2101, Pump Area..."
-          style="font-size:13px;font-family:var(--mono);padding:4px 8px;border:1px solid var(--accent);border-radius:6px;background:var(--bg3);color:var(--text1);width:180px"
+          style="font-size:13px;font-family:var(--mono);padding:4px 8px;border:1px solid var(--accent);border-radius:6px;background:var(--bg3);color:var(--text);width:180px"
           onkeydown="if(event.key==='Enter')saveLocation('${d.tag}');if(event.key==='Escape')cancelEditLocation('${d.tag}')">
         <button onclick="saveLocation('${d.tag}')" style="background:var(--green);color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;font-family:var(--cond);font-weight:700">✓</button>
         <button onclick="cancelEditLocation('${d.tag}')" style="background:var(--bg4);color:var(--text2);border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">✕</button>
@@ -3465,7 +3471,7 @@ function renderDetectorDetail(mc) {
         ${ROLES[currentUser.role].canAdmin ? `
         <span class="meta-badge ${d.type==='GAS'?'meta-gas':'meta-fire'}" style="cursor:pointer;position:relative" title="Κλικ για αλλαγή τύπου" onclick="toggleTypePicker('${d.tag}',this)">
           ${d.type} ▾
-          <select id="type-picker" style="display:none;position:absolute;top:100%;left:0;z-index:999;background:var(--bg3);color:var(--text1);border:1px solid var(--border);border-radius:6px;padding:4px;font-size:12px;min-width:90px"
+          <select id="type-picker" style="display:none;position:absolute;top:100%;left:0;z-index:999;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px;font-size:12px;min-width:90px"
             onchange="setDetType('${d.tag}',this.value)" onclick="event.stopPropagation()">
             <option value="GAS"  ${d.type==='GAS' ?'selected':''}>GAS</option>
             <option value="FIRE" ${d.type==='FIRE'?'selected':''}>FIRE</option>
@@ -3474,7 +3480,7 @@ function renderDetectorDetail(mc) {
         ${ROLES[currentUser.role].canAdmin ? `
         <span class="meta-badge meta-area" style="cursor:pointer;position:relative" title="Κλικ για αλλαγή περιοχής" onclick="toggleAreaPicker('${d.tag}',this)">
           📍 ${d.area} ▾
-          <select id="area-picker" style="display:none;position:absolute;top:100%;left:0;z-index:999;background:var(--bg3);color:var(--text1);border:1px solid var(--border);border-radius:6px;padding:4px;font-size:12px;min-width:120px"
+          <select id="area-picker" style="display:none;position:absolute;top:100%;left:0;z-index:999;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px;font-size:12px;min-width:120px"
             onchange="setDetArea('${d.tag}',this.value)" onclick="event.stopPropagation()">
             ${DET_AREAS.map(a => `<option value="${a}" ${d.area===a?'selected':''}>${a}</option>`).join('')}
           </select>
@@ -3482,7 +3488,7 @@ function renderDetectorDetail(mc) {
         ${ROLES[currentUser.role].canAdmin ? `
         <span class="meta-badge meta-area" style="cursor:pointer;position:relative" title="Κλικ για αλλαγή κατηγορίας" onclick="toggleCategoryPicker('${d.tag}',this)">
           ${d.category || '— χωρίς κατηγορία —'} ▾
-          <select id="category-picker" style="display:none;position:absolute;top:100%;left:0;z-index:999;background:var(--bg3);color:var(--text1);border:1px solid var(--border);border-radius:6px;padding:4px;font-size:12px;min-width:160px"
+          <select id="category-picker" style="display:none;position:absolute;top:100%;left:0;z-index:999;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px;font-size:12px;min-width:160px"
             onchange="if(this.value==='__new__'){addListItem('category','${d.tag}');this.value='${(d.category||'').replace(/'/g,"\\'")}';}else{setDetCategory('${d.tag}',this.value)}" onclick="event.stopPropagation()">
             ${DET_CATEGORIES.map(c => `<option value="${c}" ${d.category===c?'selected':''}>${c}</option>`).join('')}
             <option value="__new__">➕ Νέο/Άλλο…</option>
@@ -3507,7 +3513,7 @@ function renderDetectorDetail(mc) {
           <option value="12" ${interval===12?'selected':''}>12 μήνες</option>
         </select>
         <span style="font-size:12px;color:var(--text3)">Επόμενος:</span>
-        ${dateMaskInputHTML('det-nextdate-'+d.tag.replace(/[^a-zA-Z0-9]/g,''), nextDate, "v => setDetNextDate('"+d.tag+"', v)", 'width:90px;padding:4px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text1);font-family:var(--mono)')}
+        ${dateMaskInputHTML('det-nextdate-'+d.tag.replace(/[^a-zA-Z0-9]/g,''), nextDate, "v => setDetNextDate('"+d.tag+"', v)", 'width:90px;padding:4px 8px;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--mono)')}
       </div>` : ''}
     </div>
     ${ROLES[currentUser.role].canAdd ? `
@@ -3565,7 +3571,7 @@ function showEditEntryModal(tag, idx) {
       <div class="modal-title" style="margin-bottom:16px">✏️ Επεξεργασία εγγραφής — ${tag}</div>
 
       <label class="field-label">ΗΜΕΡΟΜΗΝΙΑ</label>
-      <div style="margin-bottom:10px">${dateMaskInputHTML('ee-date', e.date || '', "v => {}", 'width:100%;padding:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);font-family:var(--mono);font-size:14px;box-sizing:border-box')}</div>
+      <div style="margin-bottom:10px">${dateMaskInputHTML('ee-date', e.date || '', "v => {}", 'width:100%;padding:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);font-size:14px;box-sizing:border-box')}</div>
 
       <label class="field-label">ΕΡΓΑΣΙΑ</label>
       <input type="text" class="field-input" id="ee-task" value="${(e.task||'').replace(/"/g,'&quot;')}" style="margin-bottom:10px">
@@ -3625,6 +3631,7 @@ function saveEditedEntry(tag, idx) {
 }
 
 function deleteHistoryEntry(tag, idx) {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα','error'); return; }
   const det = DETECTORS.find(d => d.tag === tag);
   if (!det || !det.entries[idx]) return;
   if (!confirm('Διαγραφή αυτής της εγγραφής ιστορικού;\nΗ ενέργεια είναι μη αναστρέψιμη.')) return;
@@ -3936,7 +3943,7 @@ function renderAdd(mc) {
     </div>
     <div class="form-group">
       <label class="form-label">${t('form-date')}</label>
-      ${dateMaskInputHTML('add-date', today, "v => {}", 'width:100%;padding:8px;font-size:14px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);font-family:var(--mono);box-sizing:border-box')}
+      ${dateMaskInputHTML('add-date', today, "v => {}", 'width:100%;padding:8px;font-size:14px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);box-sizing:border-box')}
     </div>
     <div class="form-group">
       <label class="form-label">${t('form-task')}</label>
@@ -4577,7 +4584,7 @@ function showNewDetectorModal() {
       </select>
 
       <label class="field-label">ΕΠΟΜΕΝΗ ΒΑΘΜΟΝΟΜΗΣΗ</label>
-      <div style="margin-bottom:16px">${dateMaskInputHTML('nd-nextcal', '', "v => {}", 'width:100%;padding:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);font-family:var(--mono);font-size:14px;box-sizing:border-box')}</div>
+      <div style="margin-bottom:16px">${dateMaskInputHTML('nd-nextcal', '', "v => {}", 'width:100%;padding:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);font-size:14px;box-sizing:border-box')}</div>
 
       <div id="nd-error" style="color:var(--red2);font-size:13px;margin-bottom:10px;display:none"></div>
       <div style="display:flex;gap:8px">
@@ -4978,7 +4985,7 @@ function exportPDF(mode) {
     // ίδιο φίλτρο περιοχής (filterArea) + ίδιο κείμενο αναζήτησης (searchQ).
     const filtered = DETECTORS.filter(d => {
       const areaOk = filterArea === 'all' || d.area === filterArea;
-      const searchOk = !searchQ || d.tag.toLowerCase().includes(searchQ.toLowerCase());
+      const searchOk = !searchQ || d.tag.toLowerCase().includes(searchQ.toLowerCase()) || (d.location||"").toLowerCase().includes(searchQ.toLowerCase()) || (d.area||"").toLowerCase().includes(searchQ.toLowerCase()) || (d.description||"").toLowerCase().includes(searchQ.toLowerCase());
       return areaOk && searchOk;
     });
     kpiSource = filtered;
@@ -5169,7 +5176,7 @@ function exportExcel(mode) {
   } else if (mode === 'filtered') {
     const filtered = DETECTORS.filter(d => {
       const areaOk = filterArea === 'all' || d.area === filterArea;
-      const searchOk = !searchQ || d.tag.toLowerCase().includes(searchQ.toLowerCase());
+      const searchOk = !searchQ || d.tag.toLowerCase().includes(searchQ.toLowerCase()) || (d.location||"").toLowerCase().includes(searchQ.toLowerCase()) || (d.area||"").toLowerCase().includes(searchQ.toLowerCase()) || (d.description||"").toLowerCase().includes(searchQ.toLowerCase());
       return areaOk && searchOk;
     });
     title = (filterArea === 'all' ? 'ΑΝΙΧΝΕΥΤΕΣ' : filterArea).replace(/[^Α-Ωα-ωA-Za-z0-9]+/g,'_');
@@ -5368,6 +5375,7 @@ async function triggerManualBackup() {
   try {
     const res = await gsPost({ action: 'manualBackup' });
     if (res && res.ok) {
+      logActivity('BACKUP', `Manual backup στο VMRTIN26_BACKUP Sheet`);
       showToast('✓ Backup αποθηκεύτηκε στο VMRTIN26_BACKUP Sheet!');
     } else {
       showToast('Σφάλμα backup: ' + (res.error || 'unknown'), 'error');
@@ -5616,7 +5624,7 @@ async function showRestoreBackupModal() {
       ${backups.map(b => `
         <div onclick="confirmRestoreBackup('${npEsc(b.label)}','${npEsc(b.timestamp || b.label)}')"
           style="padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;cursor:pointer;background:var(--bg2)">
-          <div style="font-family:var(--mono);font-size:13px;color:var(--text1)">📅 ${b.timestamp || b.label}</div>
+          <div style="font-family:var(--mono);font-size:13px;color:var(--text)">📅 ${b.timestamp || b.label}</div>
           <div style="font-size:11px;color:var(--text3);margin-top:3px">${b.detectors} ανιχνευτές · ${b.entries} εγγραφές ιστορικού</div>
         </div>
       `).join('')}
@@ -6073,8 +6081,8 @@ function exportSchedulePDF(m, y, pdfFilter) {
       <td style="text-align:center;color:#888;font-size:11px">${i+1}</td>
       <td style="font-family:monospace;font-size:12px;color:#1a5fa8;font-weight:700">${d.tag}</td>
       <td style="font-size:11px">${d.location || d.area || '—'}</td>
-      <td style="text-align:center;font-size:11px"></td>
       <td style="text-align:center;font-family:monospace;font-size:11px">${nd ? formatDate(nd) : '—'}</td>
+      <td style="text-align:center;font-family:monospace;font-size:11px">${lastEntry ? formatDate(lastEntry.date) : '—'}</td>
       <td style="text-align:center">
         <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;
           background:${done?'#e8fde8':'#fde8e8'};color:${done?'#1a6a2a':'#8a1010'}">
@@ -6219,7 +6227,7 @@ function renderNpProjectList(mc) {
       return `<div class="card" style="margin-bottom:10px;cursor:pointer" onclick="openNpProject('${npEsc(name)}')">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
           <div>
-            <div style="font-family:var(--cond);font-weight:700;font-size:16px;color:var(--text1)">📁 ${name}</div>
+            <div style="font-family:var(--cond);font-weight:700;font-size:16px;color:var(--text)">📁 ${name}</div>
             <div style="font-size:12px;color:var(--text3);margin-top:4px">
               ${active} ενεργοί${ready ? ` · ${ready} έτοιμοι` : ''}${done ? ` · ${done} στο ιστορικό` : ''}
             </div>
@@ -6261,7 +6269,7 @@ function renderNpProjectDetail(mc) {
     <div class="page-header">
       <div style="display:flex;align-items:center;gap:8px">
         <button onclick="backToNpProjectList()" title="Πίσω στα έργα"
-          style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);width:34px;height:34px;font-size:16px;cursor:pointer;flex-shrink:0">‹</button>
+          style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);width:34px;height:34px;font-size:16px;cursor:pointer;flex-shrink:0">‹</button>
         <div>
           <div class="page-title">📁 ${currentNpProject}</div>
           <div class="page-sub">Κατάσταση & ιστορικό ανιχνευτών του έργου</div>
@@ -6295,7 +6303,7 @@ function renderNpProjectDetail(mc) {
     </div>
 
     <input type="search" value="${npSearchQ}" placeholder="🔍 TAG ή τοποθεσία..."
-      style="width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);padding:9px 12px;font-size:14px;box-sizing:border-box;margin-bottom:8px"
+      style="width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:9px 12px;font-size:14px;box-sizing:border-box;margin-bottom:8px"
       oninput="npSearchQ=this.value;renderNewProject(document.getElementById('main-content'))">
 
     <div style="display:flex;gap:6px;margin-bottom:14px;overflow-x:auto;padding-bottom:2px">
@@ -6421,7 +6429,7 @@ function showAddNpItemModal(presetProject, editId) {
       </select>
 
       <label class="field-label">ΗΜ. ΕΓΚΑΤΑΣΤΑΣΗΣ</label>
-      <div style="margin-bottom:10px">${dateMaskInputHTML('np-installdate', (isEdit && editItem.installDate) ? editItem.installDate : new Date().toISOString().split('T')[0], "v => {}", 'width:100%;padding:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);font-family:var(--mono);font-size:14px;box-sizing:border-box')}</div>
+      <div style="margin-bottom:10px">${dateMaskInputHTML('np-installdate', (isEdit && editItem.installDate) ? editItem.installDate : new Date().toISOString().split('T')[0], "v => {}", 'width:100%;padding:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);font-size:14px;box-sizing:border-box')}</div>
 
       <label class="field-label">ΤΕΧΝΙΤΗΣ</label>
       <input type="text" class="field-input" id="np-tech" placeholder="π.χ. Γ. Παπαδόπουλος"
@@ -6473,6 +6481,7 @@ function submitNewNpItem() {
   showToast(`✓ ${tag} προστέθηκε στο έργο "${project}"`);
   currentNpProject = project;
   currentNpFilter  = 'ΟΛΑ';
+  updateNpBadge();
   renderNewProject(document.getElementById('main-content'));
 }
 
@@ -6480,6 +6489,7 @@ function submitNewNpItem() {
 // μετά την προαγωγή το TAG/η τοποθεσία αλλάζουν μέσα από τον κανονικό
 // ανιχνευτή, ώστε να μην σπάει η σύνδεση με το ιστορικό εγκατάστασης).
 function submitEditNpItem(id) {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα','error'); return; }
   const it = NEWPROJECT_ITEMS.find(x => String(x.id) === String(id));
   if (!it) { showToast('Δεν βρέθηκε το item', 'error'); return; }
 
@@ -6504,9 +6514,11 @@ function submitEditNpItem(id) {
 
   saveNewProjectItems();
   gsUpdateNewProjectItem(it);
+  logActivity('EDIT_NP_ITEM', `${tag} · ${it.project} · τοποθεσία: ${it.location||'—'}`);
 
   document.getElementById('addnp-overlay').remove();
   showToast(`✓ ${tag} ενημερώθηκε`);
+  updateNpBadge();
   renderNewProject(document.getElementById('main-content'));
 }
 
@@ -6516,7 +6528,6 @@ function setNpStatus(id, status) {
   if (!it) return;
   const prevStatus = it.status;
   it.status = status;
-  // Αυτόματη σημείωση αλλαγής status (Suggestion #7)
   const autoNote = {
     id: 'npn_' + Date.now() + '_auto',
     npId: String(it.id),
@@ -6529,12 +6540,17 @@ function setNpStatus(id, status) {
   gsAddNpNote(autoNote);
   saveNewProjectItems();
   gsUpdateNewProjectItem(it);
+  logActivity('NP_STATUS_CHANGE', `${it.tag} · ${prevStatus} → ${status}`);
   updateNpBadge();
   renderNewProject(document.getElementById('main-content'));
 }
 
 function deleteNpItem(id) {
   if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα','error'); return; }
+  const deletedItem = NEWPROJECT_ITEMS.find(it => String(it.id) === String(id));
+  const deletedTag = deletedItem ? deletedItem.tag : id;
+  const deletedProject = deletedItem ? deletedItem.project : '—';
+  if (!confirm(`Διαγραφή ανιχνευτή "${deletedTag}" από το έργο "${deletedProject}";\nΣημειώσεις και links ΔΕΝ διαγράφονται — το ιστορικό παραμένει.`)) return;
   NEWPROJECT_ITEMS = NEWPROJECT_ITEMS.filter(it => String(it.id) !== String(id));
   saveNewProjectItems();
   if (!DELETED_NP_IDS.includes(String(id))) DELETED_NP_IDS.push(String(id));
@@ -6545,6 +6561,8 @@ function deleteNpItem(id) {
       saveDeletedNpIds();
     }
   });
+  logActivity('DELETE_NP_ITEM', `${deletedTag} · Έργο: ${deletedProject}`);
+  updateNpBadge();
   showToast('✓ Διαγράφηκε από το έργο');
   renderNewProject(document.getElementById('main-content'));
 }
@@ -6581,7 +6599,7 @@ function promoteNpItem(id) {
   saveNewProjectItems();
   gsUpdateNewProjectItem(it);
   logActivity('PROMOTE_NP', `${it.tag} → Κανονικό πρόγραμμα · Έργο: ${it.project}`);
-
+  updateNpBadge();
   showToast(`✓ ${it.tag} μεταφέρθηκε στο κανονικό πρόγραμμα`);
   renderNewProject(document.getElementById('main-content'));
 }
@@ -6754,7 +6772,7 @@ function renderLinkItemHTML(att, link, canEdit) {
   return `
     <div class="card" style="margin-bottom:8px;padding:12px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-        <a href="${link.url}" target="_blank" rel="noopener" style="flex:1;min-width:0;text-decoration:none;color:var(--text1)">
+        <a href="${link.url}" target="_blank" rel="noopener" style="flex:1;min-width:0;text-decoration:none;color:var(--text)">
           <div style="font-size:11px;color:var(--text3);font-family:var(--cond);font-weight:600">${linkTypeIcon(link.type)} ${linkTypeLabel(link.type)}</div>
           <div style="font-size:14px;color:var(--cyan2);margin-top:2px;word-break:break-all">${(link.label || link.url).replace(/</g,'&lt;')}</div>
         </a>
@@ -6859,7 +6877,7 @@ function renderNpItemDetailModalBody(npId) {
       <div class="card-title">ΣΗΜΕΙΩΣΕΙΣ</div>
       ${canEdit ? `
       <div style="margin-bottom:10px">
-        ${dateMaskInputHTML('npn-date', new Date().toISOString().split('T')[0], "v => {}", 'width:100%;margin-bottom:8px;padding:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);font-family:var(--mono);font-size:14px;box-sizing:border-box')}
+        ${dateMaskInputHTML('npn-date', new Date().toISOString().split('T')[0], "v => {}", 'width:100%;margin-bottom:8px;padding:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);font-size:14px;box-sizing:border-box')}
         <textarea class="field-input" id="npn-text" rows="2" placeholder="Νέα σημείωση..." style="margin-bottom:8px"></textarea>
         <button class="modal-ok" style="width:100%" onclick="submitNpNote('${npEsc(npId)}')">+ Προσθήκη σημείωσης</button>
       </div>
@@ -6909,6 +6927,7 @@ function submitNpNote(npId) {
   NP_NOTES.push(note);
   saveNpNotes();
   gsAddNpNote(note);
+  logActivity('ADD_NP_NOTE', `npId:${npId} · ${date} · ${text.slice(0,60)}`);
 
   showToast('✓ Η σημείωση προστέθηκε');
   renderNpItemDetailModalBody(npId);
@@ -6920,6 +6939,7 @@ function deleteNpNoteUI(noteId) {
   if (!note) return;
   if (!confirm('Διαγραφή αυτής της σημείωσης;')) return;
   const npId = note.npId;
+  const noteText = note.text || '—';
 
   NP_NOTES = NP_NOTES.filter(n => String(n.id) !== String(noteId));
   saveNpNotes();
@@ -6928,6 +6948,7 @@ function deleteNpNoteUI(noteId) {
   gsDeleteNpNote(noteId).then(ok => {
     if (ok) { DELETED_NPNOTE_IDS = DELETED_NPNOTE_IDS.filter(x => x !== String(noteId)); saveDeletedNpNoteIds(); }
   });
+  logActivity('DELETE_NP_NOTE', `npId:${npId} · ${noteText.slice(0,60)}`);
 
   showToast('✓ Η σημείωση διαγράφηκε');
   renderNpItemDetailModalBody(npId);
@@ -7020,6 +7041,7 @@ function attachLinkToEntity(linkId, entityType, entityKey) {
 }
 
 function submitNewLinkAttachment() {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα','error'); return; }
   const overlay = document.getElementById('addlink-overlay');
   const entityType = overlay.dataset.entityType, entityKey = overlay.dataset.entityKey;
   const type  = document.getElementById('al-type').value;
@@ -7027,6 +7049,10 @@ function submitNewLinkAttachment() {
   const url   = document.getElementById('al-url').value.trim();
   const errEl = document.getElementById('addlink-error');
   if (!url) { errEl.textContent = 'Το URL είναι υποχρεωτικό'; errEl.style.display = 'block'; return; }
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    errEl.textContent = 'Το URL πρέπει να ξεκινά με https:// ή http://';
+    errEl.style.display = 'block'; return;
+  }
 
   const link = {
     id: 'lnk_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
@@ -7039,6 +7065,7 @@ function submitNewLinkAttachment() {
 
   attachLinkToEntity(link.id, entityType, entityKey);
   overlay.remove();
+  logActivity('ADD_LINK', `${entityType}:${entityKey} · ${label||url}`);
   showToast('✓ Το link προστέθηκε');
   refreshOpenEntityModal(entityType, entityKey);
 }
@@ -7048,8 +7075,10 @@ function submitExistingLinkAttachment() {
   const entityType = overlay.dataset.entityType, entityKey = overlay.dataset.entityKey;
   const sel = document.getElementById('al-existing');
   if (!sel || !sel.value) return;
+  const existingLink = LINKS.find(l => String(l.id) === sel.value);
   attachLinkToEntity(sel.value, entityType, entityKey);
   overlay.remove();
+  logActivity('ADD_LINK', `${entityType}:${entityKey} · (υπάρχον) ${existingLink ? (existingLink.label||existingLink.url) : sel.value}`);
   showToast('✓ Συνδέθηκε');
   refreshOpenEntityModal(entityType, entityKey);
 }
@@ -7060,6 +7089,7 @@ function unlinkFromEntity(attId) {
   if (!att) return;
   if (!confirm('Αφαίρεση αυτής της σύνδεσης link;')) return;
   const entityType = att.entityType, entityKey = att.entityKey;
+  const link = LINKS.find(l => String(l.id) === String(att.linkId));
 
   LINK_ATTACHMENTS = LINK_ATTACHMENTS.filter(a => String(a.id) !== String(attId));
   saveLinkAttachments();
@@ -7068,6 +7098,7 @@ function unlinkFromEntity(attId) {
   gsDeleteLinkAttachment(attId).then(ok => {
     if (ok) { DELETED_LINKATT_IDS = DELETED_LINKATT_IDS.filter(x => x !== String(attId)); saveDeletedLinkAttIds(); }
   });
+  logActivity('DELETE_LINK', `${entityType}:${entityKey} · ${link ? (link.label||link.url) : attId}`);
 
   showToast('✓ Αφαιρέθηκε η σύνδεση');
   refreshOpenEntityModal(entityType, entityKey);
@@ -7149,6 +7180,7 @@ function deleteLinkPermanently(linkId, entityType, entityKey) {
   gsDeleteLink(linkId).then(ok => {
     if (ok) { DELETED_LINK_IDS = DELETED_LINK_IDS.filter(x => x !== String(linkId)); saveDeletedLinkIds(); }
   });
+  logActivity('DELETE_LINK', `Οριστική διαγραφή · ${orphaned.length} συνδέσεις αφαιρέθηκαν`);
 
   document.getElementById('editlink-overlay').remove();
   showToast('✓ Το link διαγράφηκε οριστικά');
@@ -7291,7 +7323,7 @@ function renderCylinders(mc) {
     <!-- Month selector -->
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;padding:0 2px">
       <select id="cyl-month-sel" onchange="currentCylMonth=this.value;renderCylinders(document.getElementById('main-content'))"
-        style="flex:1;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);padding:8px;font-family:var(--font);font-size:13px">
+        style="flex:1;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:8px;font-family:var(--font);font-size:13px">
         ${allMonths.map(m => `<option value="${m}" ${m===currentCylMonth?'selected':''}>${getMonthLabel(m)}</option>`).join('')}
       </select>
       <button onclick="showNewMonthModal()"
@@ -7338,7 +7370,7 @@ function renderCylinders(mc) {
             <tr style="border-bottom:1px solid var(--border)">
               <td style="padding:8px;text-align:center;font-family:var(--mono);color:var(--accent);font-weight:700">${c.num}</td>
               <td style="padding:8px">
-                <div style="font-family:var(--mono);font-size:11px;color:var(--text1)">${c.cylNo}</div>
+                <div style="font-family:var(--mono);font-size:11px;color:var(--text)">${c.cylNo}</div>
                 <div style="font-size:10px;color:var(--text3)">${c.company||''}</div>
               </td>
               <td style="padding:8px;font-size:11px;color:var(--text2)">${c.gas}</td>
@@ -7417,32 +7449,32 @@ function showAddCylinderModal(monthKey) {
         <div>
           <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--cond);font-weight:700">Α/Α</div>
           <input id="cyl-num" type="number" value="${nextNum}" min="1"
-            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);padding:8px;font-family:var(--mono);font-size:14px;box-sizing:border-box">
+            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:8px;font-family:var(--mono);font-size:14px;box-sizing:border-box">
         </div>
         <div>
           <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--cond);font-weight:700">ΑΡΙΘΜΟΣ ΦΙΑΛΗΣ *</div>
           <input id="cyl-no" type="text" placeholder="π.χ. BC746523"
-            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);padding:8px;font-family:var(--mono);font-size:14px;box-sizing:border-box">
+            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:8px;font-family:var(--mono);font-size:14px;box-sizing:border-box">
         </div>
         <div>
           <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--cond);font-weight:700">ΕΤΑΙΡΕΙΑ</div>
           <input id="cyl-company" type="text" placeholder="π.χ. CalGaz, Sensidyne, GM"
-            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);padding:8px;font-family:var(--font);font-size:13px;box-sizing:border-box">
+            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:8px;font-family:var(--font);font-size:13px;box-sizing:border-box">
         </div>
         <div>
           <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--cond);font-weight:700">ΑΕΡΙΟ / ΣΥΓΚΕΝΤΡΩΣΗ *</div>
           <input id="cyl-gas" type="text" placeholder="π.χ. H2S 25ppm, Propane 1.05%"
-            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);padding:8px;font-family:var(--font);font-size:13px;box-sizing:border-box">
+            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:8px;font-family:var(--font);font-size:13px;box-sizing:border-box">
         </div>
         <div>
           <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--cond);font-weight:700">ΗΜ. ΛΗΞΗΣ</div>
           <input id="cyl-exp" type="text" placeholder="π.χ. Sep 2027, 19/04/2028"
-            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);padding:8px;font-family:var(--mono);font-size:13px;box-sizing:border-box">
+            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:8px;font-family:var(--mono);font-size:13px;box-sizing:border-box">
         </div>
         <div>
           <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--cond);font-weight:700">ΚΑΤΑΣΤΑΣΗ</div>
           <select id="cyl-status"
-            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);padding:8px;font-family:var(--cond);font-size:13px">
+            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:8px;font-family:var(--cond);font-size:13px">
             <option value="ΕΝΕΡΓΗ">ΕΝΕΡΓΗ</option>
             <option value="ΑΔΕΙΑ">ΑΔΕΙΑ</option>
           </select>
@@ -7485,6 +7517,7 @@ async function saveCylinder(monthKey) {
   showToast('💾 Αποθήκευση φιάλης...');
   const ok = await gsSaveCylinder(cyl);
   if (ok) showToast('✓ Φιάλη ' + cyl.num + ' αποθηκεύτηκε στο Sheet');
+  logActivity('ADD_CYLINDER', `Φιάλη ${cyl.num} · ${cyl.gas||'—'} · ${cyl.company||'—'}`);
   renderCylinders(document.getElementById('main-content'));
 }
 
@@ -7502,27 +7535,27 @@ function editCylinder(id) {
         <div>
           <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--cond);font-weight:700">ΑΡΙΘΜΟΣ ΦΙΑΛΗΣ</div>
           <input id="ecyl-no" type="text" value="${cyl.cylNo}"
-            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);padding:8px;font-family:var(--mono);font-size:14px;box-sizing:border-box">
+            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:8px;font-family:var(--mono);font-size:14px;box-sizing:border-box">
         </div>
         <div>
           <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--cond);font-weight:700">ΕΤΑΙΡΕΙΑ</div>
           <input id="ecyl-company" type="text" value="${cyl.company}"
-            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);padding:8px;font-family:var(--font);font-size:13px;box-sizing:border-box">
+            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:8px;font-family:var(--font);font-size:13px;box-sizing:border-box">
         </div>
         <div>
           <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--cond);font-weight:700">ΑΕΡΙΟ / ΣΥΓΚΕΝΤΡΩΣΗ</div>
           <input id="ecyl-gas" type="text" value="${cyl.gas}"
-            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);padding:8px;font-family:var(--font);font-size:13px;box-sizing:border-box">
+            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:8px;font-family:var(--font);font-size:13px;box-sizing:border-box">
         </div>
         <div>
           <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--cond);font-weight:700">ΗΜ. ΛΗΞΗΣ</div>
           <input id="ecyl-exp" type="text" value="${formatDate(cyl.expDate) === '—' ? '' : formatDate(cyl.expDate)}"
-            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);padding:8px;font-family:var(--mono);font-size:13px;box-sizing:border-box">
+            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:8px;font-family:var(--mono);font-size:13px;box-sizing:border-box">
         </div>
         <div>
           <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--cond);font-weight:700">ΚΑΤΑΣΤΑΣΗ</div>
           <select id="ecyl-status"
-            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);padding:8px;font-family:var(--cond);font-size:13px">
+            style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:8px;font-family:var(--cond);font-size:13px">
             <option value="ΕΝΕΡΓΗ" ${cyl.status==='ΕΝΕΡΓΗ'?'selected':''}>ΕΝΕΡΓΗ</option>
             <option value="ΑΔΕΙΑ"  ${cyl.status==='ΑΔΕΙΑ' ?'selected':''}>ΑΔΕΙΑ</option>
           </select>
@@ -7576,11 +7609,13 @@ function _confirmDeleteCylinder(id) {
     }
   });
   document.getElementById('cyl-edit-overlay')?.remove();
+  logActivity('DELETE_CYLINDER', `Φιάλη id:${sid}`);
   showToast('✓ Φιάλη διαγράφηκε');
   renderCylinders(document.getElementById('main-content'));
 }
 
 function showNewMonthModal() {
+  if (!ROLES[currentUser.role].canAdd) { showToast('Δεν έχεις δικαίωμα','error'); return; }
   const now = new Date();
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay open';
@@ -7589,7 +7624,7 @@ function showNewMonthModal() {
       <div class="modal-title">📅 ΕΠΙΛΟΓΗ ΜΗΝΑ</div>
       <div style="margin-bottom:16px">
         <input type="month" id="new-month-input" value="${getCurrentMonthKey()}"
-          style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text1);padding:10px;font-family:var(--font);font-size:14px;box-sizing:border-box">
+          style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:10px;font-family:var(--font);font-size:14px;box-sizing:border-box">
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <button onclick="this.closest('.modal-overlay').remove()"
