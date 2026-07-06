@@ -1,8 +1,8 @@
-// VMRTIN26 Service Worker v2.0
+// VMRTIN26 Service Worker v3.0
 // ΣΗΜΑΝΤΙΚΟ: κάθε φορά που ανεβαίνει νέα έκδοση στο GitHub Pages,
 // αρκεί να αλλάξεις ΜΟΝΟ αυτό το νούμερο → ο browser θα εγκαταστήσει
 // αυτόματα τον νέο SW και θα φορτώσει τα φρέσκα αρχεία.
-const CACHE = 'vmrtin26-v2';
+const CACHE = 'vmrtin26-v3';
 
 const ASSETS = [
   './',
