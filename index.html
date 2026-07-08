@@ -6115,7 +6115,10 @@ function exportSchedulePDF(m, y, pdfFilter) {
         </span>
       </td>
       <td style="font-size:10px;color:#555">${lastEntry ? lastEntry.task : ''}</td>
-      <td style="font-size:10px;color:#555">${lastEntry ? lastEntry.tech : ''}</td>
+      <td style="font-size:10px;color:#555">
+        <span>${lastEntry ? lastEntry.tech : ''}</span>
+        <span style="display:inline-block;border-bottom:1px solid #999;width:90px;margin-left:8px;vertical-align:bottom">&nbsp;</span>
+      </td>
     </tr>`;
   }).join('');
 
@@ -6167,7 +6170,7 @@ function exportSchedulePDF(m, y, pdfFilter) {
       <th style="text-align:center">ΗΜ.ΕΛΕΓΧΟΥ</th>
       <th style="text-align:center">ΚΑΤΑΣΤΑΣΗ</th>
       <th>ΕΡΓΑΣΙΑ</th>
-      <th>ΤΕΧΝΙΤΗΣ</th>
+      <th>ΤΕΧΝΙΤΗΣ / ΥΠΟΓΡΑΦΗ</th>
     </tr>
   </thead>
   <tbody>${rows || '<tr><td colspan="8" style="text-align:center;padding:16px;color:#aaa">Δεν υπάρχουν ανιχνευτές</td></tr>'}</tbody>
