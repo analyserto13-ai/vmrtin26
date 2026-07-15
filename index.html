@@ -3373,6 +3373,7 @@ function renderDetectors(mc) {
     <div class="filter-row">
       ${areas.map(a => `<div class="filter-pill ${filterArea===a?'active':''}" data-area="${a}" onclick="filterArea='${a}';renderDetectorList()">${a==='all'?t('all'):a}</div>`).join('')}
     </div>
+    <div id="det-area-links-bar"></div>
     <div id="det-list"></div>
   `;
   renderDetectorList();
@@ -3402,6 +3403,26 @@ function renderDetectorList() {
   document.querySelectorAll('.filter-pill').forEach(p => {
     p.classList.toggle('active', p.dataset.area === filterArea);
   });
+
+  // Μπάρα "🗺️ Σχέδια περιοχής" — εμφανίζεται μόνο όταν έχει επιλεγεί συγκεκριμένη περιοχή
+  const areaBarEl = document.getElementById('det-area-links-bar');
+  if (areaBarEl) {
+    if (filterArea !== 'all') {
+      const areaLinkCount = getLinksForEntity('AREA', filterArea).length;
+      areaBarEl.innerHTML = `
+        <div onclick="showAreaLinksModal('${npEsc(filterArea)}')"
+          style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;
+            background:var(--badge-cyan-bg);border:1px solid var(--cyan);border-radius:var(--radius);
+            padding:9px 12px;margin-bottom:10px">
+          <span style="font-size:12px;font-family:var(--cond);font-weight:700;color:var(--cyan2)">
+            🗺️ Σχέδια περιοχής ${filterArea}${areaLinkCount ? ` (${areaLinkCount})` : ''}
+          </span>
+          <span style="color:var(--cyan2);font-size:14px">›</span>
+        </div>`;
+    } else {
+      areaBarEl.innerHTML = '';
+    }
+  }
 
   listEl.innerHTML = `
     ${filtered.map(d => {
@@ -6022,7 +6043,14 @@ function renderSchedule(mc) {
       itemHtml = `<div class="empty-state"><div class="empty-icon">${schedViewFilter === 'done' ? '📋' : '✅'}</div><div class="empty-text">${emptyMsg}</div></div>`;
     } else {
       Object.entries(byAreaFiltered).sort(([a],[b]) => a.localeCompare(b)).forEach(([area, list]) => {
-        itemHtml += `<div class="sched-area-header">📍 ${area} (${list.length})</div>`;
+        const areaLinkCount = getLinksForEntity('AREA', area).length;
+        itemHtml += `<div class="sched-area-header" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <span>📍 ${area} (${list.length})</span>
+          <span onclick="event.stopPropagation();showAreaLinksModal('${npEsc(area)}')" title="Σχέδια & Links περιοχής"
+            style="cursor:pointer;font-size:11px;font-family:var(--cond);font-weight:700;color:var(--cyan2);background:var(--badge-cyan-bg);border:1px solid var(--cyan);border-radius:12px;padding:3px 10px;white-space:nowrap;flex-shrink:0">
+            🗺️ Σχέδια${areaLinkCount ? ` (${areaLinkCount})` : ''}
+          </span>
+        </div>`;
         list.forEach(d => {
           idx++;
           const nd = getNextCalDate(d);
@@ -6933,6 +6961,7 @@ function getLinksForEntity(entityType, entityKey) {
 function refreshOpenEntityModal(entityType, entityKey) {
   if (entityType === 'DETECTOR') showDetectorLinksModal(entityKey);
   else if (entityType === 'NPITEM') showNpItemDetailModal(entityKey);
+  else if (entityType === 'AREA') showAreaLinksModal(entityKey);
 }
 
 function renderLinkItemHTML(att, link, canEdit) {
@@ -7014,7 +7043,43 @@ function showDetectorLinksModal(tag) {
   `;
 }
 
-// ── Σημειώσεις + Links ανιχνευτή ΝΕΟΥ ΕΡΓΟΥ (πριν/μετά την προαγωγή — η πηγή
+// ── Links & Σχέδια ΠΕΡΙΟΧΗΣ (π.χ. NNC, C3, MHC) — Layouts/PDF/Cause&Effect
+// κουμπωμένα στην περιοχή σαν σύνολο, ίδιο shared LINKS row με ό,τι άλλο. ──
+function showAreaLinksModal(area) {
+  const canEdit = ROLES[currentUser.role].canAdmin;
+  const areaLinks = getLinksForEntity('AREA', area);
+
+  let overlay = document.getElementById('arealinks-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.className = 'modal-overlay open';
+    overlay.id = 'arealinks-overlay';
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  }
+  overlay.dataset.area = area;
+
+  overlay.innerHTML = `
+    <div class="modal-box" style="max-width:440px;text-align:left;max-height:90vh;overflow-y:auto">
+      <div class="modal-title" style="margin-bottom:2px">🗺️ Σχέδια & Links — ${area}</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:14px">Layouts, Cause &amp; Effect, PDF περιοχής</div>
+
+      <div id="arealinks-list">
+        ${areaLinks.length ? areaLinks.map(({att,link}) => renderLinkItemHTML(att, link, canEdit)).join('') : `<div style="font-size:12px;color:var(--text3);margin-bottom:10px">— δεν υπάρχουν ακόμα links για αυτή την περιοχή —</div>`}
+      </div>
+
+      ${canEdit ? `
+      <button onclick="showAddLinkModal('AREA','${npEsc(area)}')"
+        style="width:100%;margin-top:6px;background:var(--cyan);border:none;border-radius:var(--radius);color:var(--on-accent);padding:11px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer">
+        + Προσθήκη link
+      </button>` : ''}
+
+      <button class="modal-cancel" style="width:100%;margin-top:14px" onclick="document.getElementById('arealinks-overlay').remove()">Κλείσιμο</button>
+    </div>
+  `;
+}
+
+
 // αλήθειας παραμένει εδώ ακόμα και μετά). Admin γράφει, όλοι βλέπουν. ──
 function showNpItemDetailModal(npId) {
   renderNpItemDetailModalBody(npId);
