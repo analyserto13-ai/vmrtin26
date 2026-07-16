@@ -1554,33 +1554,79 @@ function saveDeletedDetTags() {
 // θα έμεναν για πάντα ασυγχρόνιστες, και νέες/τροποποιημένες εγγραφές θα
 // χάνονταν σιωπηλά στο destructive rebuild του ENTRIES μέσα στο sync.
 // ════════════════════════════════════════
-let PENDING_RENAMES = JSON.parse(localStorage.getItem('marnik26_pending_renames') || '[]');
-function savePendingRenames() {
-  localStorage.setItem('marnik26_pending_renames', JSON.stringify(PENDING_RENAMES));
+// ════════════════════════════════════════
+// OFFLINE QUEUE — μία ενιαία ουρά για ΟΛΕΣ τις εγγραφές πεδίου (entries,
+// renames, φιάλες, ΝΕΟ ΕΡΓΟ, links, notes). Πριν, μόνο entries/renames είχαν
+// ουρά· όλα τα άλλα απλά χάνονταν σιωπηλά offline (.catch(()=>{})).
+// ΔΕΝ καλύπτει μαζικές/διαχειριστικές ενέργειες (delete detector, χρήστες,
+// restore backup) — αυτές χρειάζονται φρέσκο login, δεν κρατάμε credentials
+// σε αναμονή επ' αόριστον στη συσκευή για ασφάλεια.
+// ════════════════════════════════════════
+const QUEUE_EXCLUDED_ACTIONS = new Set([
+  'addDetector', 'saveUser', 'deleteUser', 'restoreBackup', 'importDetectors', 'manualBackup',
+]);
+const QUEUE_MAX_RETRIES = 5; // μετά από τόσες αποτυχίες σταματά το auto-retry, μένει "κολλημένο" στην ουρά
+
+function migratePendingQueue_() {
+  const raw = localStorage.getItem('marnik26_pending_queue');
+  if (raw) { try { return JSON.parse(raw); } catch(e) { /* πέφτει στο migration παρακάτω */ } }
+  // Πρώτη φορά μετά το update: μετέτρεψε ό,τι είχε μείνει στις παλιές ξεχωριστές ουρές.
+  const queue = [];
+  try {
+    JSON.parse(localStorage.getItem('marnik26_pending_entries') || '[]')
+      .forEach(pe => queue.push({ id: pe.id, action: pe.action, data: pe.data, ts: Date.now(), retries: 0 }));
+  } catch(e) {}
+  try {
+    JSON.parse(localStorage.getItem('marnik26_pending_renames') || '[]')
+      .forEach(r => queue.push({ id: 'mig_' + Math.random().toString(36).slice(2,8), action: 'renameDetector', data: r, ts: Date.now(), retries: 0 }));
+  } catch(e) {}
+  localStorage.removeItem('marnik26_pending_entries');
+  localStorage.removeItem('marnik26_pending_renames');
+  return queue;
 }
-function queuePendingRename(data) {
-  PENDING_RENAMES = PENDING_RENAMES.filter(r => r.oldTag !== data.oldTag);
-  PENDING_RENAMES.push({ oldTag: data.oldTag, newTag: data.newTag });
-  savePendingRenames();
-}
-function clearPendingRename(oldTag) {
-  const before = PENDING_RENAMES.length;
-  PENDING_RENAMES = PENDING_RENAMES.filter(r => r.oldTag !== oldTag);
-  if (PENDING_RENAMES.length !== before) savePendingRenames();
+let PENDING_QUEUE = migratePendingQueue_();
+function savePendingQueue() {
+  localStorage.setItem('marnik26_pending_queue', JSON.stringify(PENDING_QUEUE));
 }
 
-let PENDING_ENTRIES = JSON.parse(localStorage.getItem('marnik26_pending_entries') || '[]');
-function savePendingEntries() {
-  localStorage.setItem('marnik26_pending_entries', JSON.stringify(PENDING_ENTRIES));
-}
-function queuePendingEntry(action, data) {
-  const id = 'pe_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
-  PENDING_ENTRIES.push({ id, action, data });
-  savePendingEntries();
+// Γενικό entry point — χρησιμοποίησέ το από οποιοδήποτε gsXxx() wrapper όταν
+// αποτυγχάνει/είναι offline. Επιστρέφει null αν το action δεν επιτρέπεται σε
+// ουρά (βλ. QUEUE_EXCLUDED_ACTIONS) — ο caller πρέπει τότε να δείξει σφάλμα.
+function queueAction(action, data) {
+  if (QUEUE_EXCLUDED_ACTIONS.has(action)) return null;
+  const id = 'pq_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+  PENDING_QUEUE.push({ id, action, data, ts: Date.now(), retries: 0 });
+  savePendingQueue();
   return id;
 }
+
+// Παλιά ονόματα διατηρούνται σαν λεπτά wrappers πάνω στην ενιαία ουρά, ώστε
+// τα ήδη υπάρχοντα σημεία κλήσης (gsSaveEntry/gsUpdateEntry/gsDeleteEntry/
+// gsRenameDetector) να μη χρειάζεται να αλλάξουν.
+function queuePendingEntry(action, data) {
+  return queueAction(action, data);
+}
+function queuePendingRename(data) {
+  // Κράτα μόνο το πιο πρόσφατο pending rename ανά oldTag (ίδιο με πριν).
+  PENDING_QUEUE = PENDING_QUEUE.filter(q => !(q.action === 'renameDetector' && q.data.oldTag === data.oldTag));
+  savePendingQueue();
+  queueAction('renameDetector', data);
+}
+function clearPendingRename(oldTag) {
+  const before = PENDING_QUEUE.length;
+  PENDING_QUEUE = PENDING_QUEUE.filter(q => !(q.action === 'renameDetector' && q.data.oldTag === oldTag));
+  if (PENDING_QUEUE.length !== before) savePendingQueue();
+}
+// Views πάνω στην ενιαία ουρά — χρησιμοποιούνται από το syncFromSheets() για
+// την ίδια αμυντική λογική re-apply που υπήρχε ήδη (βλ. παρακάτω).
+function pendingRenamesView() { return PENDING_QUEUE.filter(q => q.action === 'renameDetector').map(q => q.data); }
+function pendingEntriesView() { return PENDING_QUEUE.filter(q => ['addEntry','updateEntry','deleteEntry'].includes(q.action)); }
+
 function pendingChangesCount() {
-  return PENDING_RENAMES.length + PENDING_ENTRIES.length;
+  return PENDING_QUEUE.length;
+}
+function stuckQueueCount() {
+  return PENDING_QUEUE.filter(q => q.retries >= QUEUE_MAX_RETRIES).length;
 }
 
 // CYLINDERS: { id, monthKey, num, cylNo, company, gas, expDate, status }
@@ -1654,117 +1700,123 @@ function saveDeletedNpNoteIds() {
 
 // ── Push μία φιάλη στο Sheet (upsert) ──
 async function gsSaveCylinder(cyl) {
-  if (!gsConnected) { showToast('⚠ Φιάλη αποθηκεύτηκε τοπικά — χωρίς σύνδεση στο Sheet', 'error'); return false; }
+  if (!gsConnected) { queueAction('saveCylinder', cyl); showToast('⚠ Φιάλη αποθηκεύτηκε τοπικά — θα σταλεί αυτόματα στο Sheet', 'error'); return false; }
   try {
     await gsPost({ action: 'saveCylinder', data: cyl });
     return true;
   } catch(err) {
     console.error('gsSaveCylinder error:', err);
-    showToast('⚠ Φιάλη αποθηκεύτηκε τοπικά — δεν έφτασε στο Sheet', 'error');
+    queueAction('saveCylinder', cyl);
+    showToast('⚠ Φιάλη αποθηκεύτηκε τοπικά — θα ξανασταλεί αυτόματα στο Sheet', 'error');
     return false;
   }
 }
 
 // ── Διαγραφή φιάλης από Sheet ──
 async function gsDeleteCylinder(id) {
-  if (!gsConnected) return false;
+  if (!gsConnected) { queueAction('deleteCylinder', { id }); return false; }
   try {
     await gsPost({ action: 'deleteCylinder', data: { id } });
     return true;
   } catch(err) {
     console.error('gsDeleteCylinder error:', err);
+    queueAction('deleteCylinder', { id });
     return false;
   }
 }
 
 // ── ΝΕΟ ΕΡΓΟ: push/delete/promote στο Sheet ──
 async function gsSaveNewProjectItem(item) {
-  if (!gsConnected) return false;
+  if (!gsConnected) { queueAction('addNewProjectItem', item); return false; }
   try {
     await gsPost({ action: 'addNewProjectItem', data: item });
     return true;
   } catch(err) {
     console.error('gsSaveNewProjectItem error:', err);
-    showToast('⚠ Αποθηκεύτηκε τοπικά — δεν έφτασε στο Sheet', 'error');
+    queueAction('addNewProjectItem', item);
+    showToast('⚠ Αποθηκεύτηκε τοπικά — θα σταλεί αυτόματα στο Sheet', 'error');
     return false;
   }
 }
 
 async function gsUpdateNewProjectItem(item) {
-  if (!gsConnected) return false;
+  if (!gsConnected) { queueAction('updateNewProjectItem', item); return false; }
   try {
     await gsPost({ action: 'updateNewProjectItem', data: item });
     return true;
   } catch(err) {
     console.error('gsUpdateNewProjectItem error:', err);
-    showToast('⚠ Ενημερώθηκε τοπικά — δεν έφτασε στο Sheet', 'error');
+    queueAction('updateNewProjectItem', item);
+    showToast('⚠ Ενημερώθηκε τοπικά — θα σταλεί αυτόματα στο Sheet', 'error');
     return false;
   }
 }
 
 async function gsDeleteNewProjectItem(id) {
-  if (!gsConnected) return false;
+  if (!gsConnected) { queueAction('deleteNewProjectItem', { id }); return false; }
   try {
     await gsPost({ action: 'deleteNewProjectItem', data: { id } });
     return true;
   } catch(err) {
     console.error('gsDeleteNewProjectItem error:', err);
-    showToast('⚠ Διαγραφή τοπική — δεν έφτασε στο Sheet', 'error');
+    queueAction('deleteNewProjectItem', { id });
+    showToast('⚠ Διαγραφή τοπική — θα σταλεί αυτόματα στο Sheet', 'error');
     return false;
   }
 }
 
 async function gsPromoteNewProjectItem(item) {
-  if (!gsConnected) return false;
+  if (!gsConnected) { queueAction('promoteNewProjectItem', item); return false; }
   try {
     await gsPost({ action: 'promoteNewProjectItem', data: item });
     return true;
   } catch(err) {
     console.error('gsPromoteNewProjectItem error:', err);
-    showToast('⚠ Μεταφορά τοπική — δεν έφτασε στο Sheet', 'error');
+    queueAction('promoteNewProjectItem', item);
+    showToast('⚠ Μεταφορά τοπική — θα σταλεί αυτόματα στο Sheet', 'error');
     return false;
   }
 }
 
 // ── LINKS (κοινή δεξαμενή URLs) ──
 async function gsSaveLink(link) {
-  if (!gsConnected) return false;
+  if (!gsConnected) { queueAction('saveLink', link); return false; }
   try { await gsPost({ action: 'saveLink', data: link }); return true; }
-  catch(err) { console.error('gsSaveLink error:', err); showToast('⚠ Link τοπικά — δεν έφτασε στο Sheet', 'error'); return false; }
+  catch(err) { console.error('gsSaveLink error:', err); queueAction('saveLink', link); showToast('⚠ Link τοπικά — θα σταλεί αυτόματα στο Sheet', 'error'); return false; }
 }
 async function gsDeleteLink(id) {
-  if (!gsConnected) return false;
+  if (!gsConnected) { queueAction('deleteLink', { id }); return false; }
   try { await gsPost({ action: 'deleteLink', data: { id } }); return true; }
-  catch(err) { console.error('gsDeleteLink error:', err); showToast('⚠ Διαγραφή link τοπική — δεν έφτασε στο Sheet', 'error'); return false; }
+  catch(err) { console.error('gsDeleteLink error:', err); queueAction('deleteLink', { id }); showToast('⚠ Διαγραφή link τοπική — θα σταλεί αυτόματα στο Sheet', 'error'); return false; }
 }
 
 // ── LINK_ATTACHMENTS (σύνδεση tag/np-item ↔ link) ──
 async function gsSaveLinkAttachment(att) {
-  if (!gsConnected) return false;
+  if (!gsConnected) { queueAction('saveLinkAttachment', att); return false; }
   try { await gsPost({ action: 'saveLinkAttachment', data: att }); return true; }
-  catch(err) { console.error('gsSaveLinkAttachment error:', err); showToast('⚠ Σύνδεση link τοπική — δεν έφτασε στο Sheet', 'error'); return false; }
+  catch(err) { console.error('gsSaveLinkAttachment error:', err); queueAction('saveLinkAttachment', att); showToast('⚠ Σύνδεση link τοπική — θα σταλεί αυτόματα στο Sheet', 'error'); return false; }
 }
 async function gsDeleteLinkAttachment(id) {
-  if (!gsConnected) return false;
+  if (!gsConnected) { queueAction('deleteLinkAttachment', { id }); return false; }
   try { await gsPost({ action: 'deleteLinkAttachment', data: { id } }); return true; }
-  catch(err) { console.error('gsDeleteLinkAttachment error:', err); return false; }
+  catch(err) { console.error('gsDeleteLinkAttachment error:', err); queueAction('deleteLinkAttachment', { id }); return false; }
 }
 
 // ── NP_NOTES (σημειώσεις εγκατάστασης ΝΕΟΥ ΕΡΓΟΥ) ──
 async function gsAddNpNote(note) {
-  if (!gsConnected) return false;
+  if (!gsConnected) { queueAction('addNpNote', note); return false; }
   try { await gsPost({ action: 'addNpNote', data: note }); return true; }
-  catch(err) { console.error('gsAddNpNote error:', err); showToast('⚠ Σημείωση τοπική — δεν έφτασε στο Sheet', 'error'); return false; }
+  catch(err) { console.error('gsAddNpNote error:', err); queueAction('addNpNote', note); showToast('⚠ Σημείωση τοπική — θα σταλεί αυτόματα στο Sheet', 'error'); return false; }
 }
 async function gsUpdateNpNote(note) {
-  if (!gsConnected) return false;
+  if (!gsConnected) { queueAction('updateNpNote', note); return false; }
   try { await gsPost({ action: 'updateNpNote', data: note }); return true; }
-  catch(err) { console.error('gsUpdateNpNote error:', err); return false; }
+  catch(err) { console.error('gsUpdateNpNote error:', err); queueAction('updateNpNote', note); return false; }
 }
 async function gsDeleteNpNote(id) {
-  if (!gsConnected) return false;
+  if (!gsConnected) { queueAction('deleteNpNote', { id }); return false; }
   try { await gsPost({ action: 'deleteNpNote', data: { id } }); return true; }
-  catch(err) { console.error('gsDeleteNpNote error:', err); return false; }
+  catch(err) { console.error('gsDeleteNpNote error:', err); queueAction('deleteNpNote', { id }); return false; }
 }
 
 // ════════════════════════════════════════
@@ -1892,27 +1944,25 @@ async function gsPost(data) {
 // getDetectors/getAllEntries πιο κάτω, ώστε να μη χαθούν στο destructive
 // rebuild του ENTRIES. Best-effort: ό,τι αποτύχει ξαναμπαίνει στην ουρά για
 // τον επόμενο συγχρονισμό.
+let queueFlushInProgress = false;
 async function flushPendingChanges() {
-  if (PENDING_RENAMES.length > 0) {
-    for (const r of [...PENDING_RENAMES]) {
+  if (queueFlushInProgress || PENDING_QUEUE.length === 0) return;
+  queueFlushInProgress = true;
+  try {
+    for (const item of [...PENDING_QUEUE]) {
+      if (item.retries >= QUEUE_MAX_RETRIES) continue; // "κολλημένο" — δεν ξαναπροσπαθεί μόνο του
       try {
-        await gsPost({ action: 'renameDetector', data: r });
-        clearPendingRename(r.oldTag);
+        await gsPost({ action: item.action, data: item.data });
+        PENDING_QUEUE = PENDING_QUEUE.filter(q => q.id !== item.id);
+        savePendingQueue();
       } catch(err) {
-        console.error('Flush rename αποτυχία, παραμένει στην ουρά:', r, err);
+        item.retries = (item.retries || 0) + 1;
+        savePendingQueue();
+        console.error('Flush αποτυχία, παραμένει στην ουρά:', item.action, item.data, err);
       }
     }
-  }
-  if (PENDING_ENTRIES.length > 0) {
-    for (const pe of [...PENDING_ENTRIES]) {
-      try {
-        await gsPost({ action: pe.action, data: pe.data });
-        PENDING_ENTRIES = PENDING_ENTRIES.filter(x => x.id !== pe.id);
-        savePendingEntries();
-      } catch(err) {
-        console.error('Flush entry αποτυχία, παραμένει στην ουρά:', pe, err);
-      }
-    }
+  } finally {
+    queueFlushInProgress = false;
   }
 }
 
@@ -1961,9 +2011,9 @@ async function syncFromSheets() {
       // Ασφάλεια: αν παραμένει pending rename (το flush παραπάνω αποτυχημένο),
       // το merge πιο πάνω μπορεί να ξανάφερε τον ΠΑΛΙΟ tag σαν "καινούργιο"
       // ανιχνευτή — αφαίρεσέ τον, κρατάμε μόνο τον ήδη μετονομασμένο τοπικό.
-      PENDING_RENAMES.forEach(r => {
-        if (sheetDetTags.has(r.oldTag)) {
-          DETECTORS = DETECTORS.filter(d => d.tag !== r.oldTag);
+      PENDING_QUEUE.filter(q => q.action === 'renameDetector').forEach(q => {
+        if (sheetDetTags.has(q.data.oldTag)) {
+          DETECTORS = DETECTORS.filter(d => d.tag !== q.data.oldTag);
         }
       });
     }
@@ -1993,7 +2043,7 @@ async function syncFromSheets() {
     // POST ακόμα αποτυγχάνει) πάνω στο φρεσκο-φορτωμένο array, ώστε νέες/
     // τροποποιημένες/διαγραμμένες εγγραφές να μη χαθούν ή ξαναεμφανιστούν
     // στην παλιά τους μορφή λόγω του destructive rebuild πιο πάνω.
-    PENDING_ENTRIES.forEach(pe => {
+    pendingEntriesView().forEach(pe => {
       const d = pe.data;
       let det = DETECTORS.find(x => x.tag === d.tag);
       if (pe.action === 'addEntry') {
@@ -2009,26 +2059,10 @@ async function syncFromSheets() {
       }
     });
 
-    // Load users — Sheet είναι η αλήθεια
-    // Αφαιρούμε όλους πλην admin και τους ξαναφτιάχνουμε από το Sheet
-    const usrRes = await gsGet({ action: 'getUsers' });
-    if (usrRes.users && usrRes.users.length > 0) {
-      // Κράτα μόνο τον admin τοπικά
-      const adminUser = USERS['admin'];
-      Object.keys(USERS).forEach(k => { if (k !== 'admin') delete USERS[k]; });
-      // Φόρτωσε ΟΛΑ από Sheet (συμπεριλαμβανομένου admin αν υπάρχει)
-      for (const u of usrRes.users) {
-        if (!u.username) continue;
-        USERS[u.username] = {
-          passHash: u.passHash || (u.username === 'admin' && adminUser ? adminUser.passHash : ''),
-          role:     u.role     || 'readonly',
-          name:     u.name     || u.username,
-          dept:     u.dept     || '',
-        };
-      }
-      // Αν ο admin δεν είναι στο Sheet, κράτα τον τοπικό
-      if (!USERS['admin'] && adminUser) USERS['admin'] = adminUser;
-    }
+    // Σημείωση: η λίστα χρηστών ΔΕΝ φορτώνεται πλέον εδώ σε κάθε sync — το
+    // action 'getUsers' απαιτεί τώρα admin credentials (βλ. security fix) και
+    // δεν χρειάζεται να κρατάμε τα password hash όλων στη συσκευή. Η λίστα
+    // φορτώνεται on-demand μέσα στο Admin panel (βλ. renderAdmin/loadUsersForAdmin).
 
     // Load cylinders — merge: Sheet κερδίζει για υπάρχοντα, τοπικά unsent προστίθενται
     const cylRes = await gsGet({ action: 'getCylinders' });
@@ -2189,8 +2223,8 @@ async function syncFromSheets() {
 
     gsConnected = true;
     {
-      const pc = pendingChangesCount();
-      showSyncStatus(pc > 0 ? `✓ Συνδεδεμένο · ${pc} εκκρεμούν` : '✓ Συνδεδεμένο', 'ok');
+      const pc = pendingChangesCount(), sc = stuckQueueCount();
+      showSyncStatus(pc > 0 ? `✓ Συνδεδεμένο · ${pc} εκκρεμούν${sc > 0 ? ` (⚠${sc} χρειάζονται προσοχή)` : ''}` : '✓ Συνδεδεμένο', 'ok');
     }
     if (currentPage) showPage(currentPage);
 
@@ -2207,7 +2241,7 @@ async function syncFromSheets() {
 }
 
 // ── Save entry to Google Sheets ──
-// Offline ή αποτυχία → μπαίνει στην ουρά PENDING_ENTRIES και ξανααποστέλλεται
+// Offline ή αποτυχία → μπαίνει στην ενιαία ουρά (PENDING_QUEUE) και ξανααποστέλλεται
 // αυτόματα στην αρχή του επόμενου syncFromSheets(). Δεν χάνεται σιωπηλά.
 async function gsSaveEntry(entry) {
   if (!gsConnected) { queuePendingEntry('addEntry', entry); return; }
@@ -2226,7 +2260,7 @@ async function gsSaveEntry(entry) {
 async function gsUpdateEntry(data) {
   if (!gsConnected) { queuePendingEntry('updateEntry', data); return false; }
   try {
-    await gsPost({ action: 'updateEntry', data });
+    await gsPost({ action: 'updateEntry', data: { ...data, auth: authPayload() } });
     return true;
   } catch(err) {
     console.error('gsUpdateEntry error:', err);
@@ -2239,7 +2273,7 @@ async function gsUpdateEntry(data) {
 async function gsDeleteEntry(data) {
   if (!gsConnected) { queuePendingEntry('deleteEntry', data); return false; }
   try {
-    await gsPost({ action: 'deleteEntry', data });
+    await gsPost({ action: 'deleteEntry', data: { ...data, auth: authPayload() } });
     return true;
   } catch(err) {
     console.error('gsDeleteEntry error:', err);
@@ -2253,7 +2287,7 @@ async function gsDeleteEntry(data) {
 async function gsSaveDetector(det) {
   if (!gsConnected) return;
   try {
-    await gsPost({ action: 'addDetector', data: det });
+    await gsPost({ action: 'addDetector', data: { ...det, auth: authPayload() } });
   } catch(err) {
     console.error('Save detector error:', err);
   }
@@ -2270,12 +2304,12 @@ async function gsUpdateDetector(data) {
 }
 
 // ΝΕΑ actions — χρειάζονται handler στο Code.gs (renameDetector/deleteDetector).
-// Offline ή αποτυχία → μπαίνει στο PENDING_RENAMES και ξαναστέλνεται αυτόματα
+// Offline ή αποτυχία → μπαίνει στην ενιαία ουρά (PENDING_QUEUE) και ξαναστέλνεται αυτόματα
 // στην αρχή του επόμενου syncFromSheets() (βλ. flushPendingChanges()).
 async function gsRenameDetector(data) {
   if (!gsConnected) { queuePendingRename(data); return false; }
   try {
-    await gsPost({ action: 'renameDetector', data });
+    await gsPost({ action: 'renameDetector', data: { ...data, auth: authPayload() } });
     clearPendingRename(data.oldTag);
     return true;
   } catch(err) {
@@ -2289,7 +2323,7 @@ async function gsRenameDetector(data) {
 async function gsDeleteDetector(data) {
   if (!gsConnected) return false;
   try {
-    await gsPost({ action: 'deleteDetector', data });
+    await gsPost({ action: 'deleteDetector', data: { ...data, auth: authPayload() } });
     return true;
   } catch(err) {
     console.error('gsDeleteDetector error:', err);
@@ -2302,7 +2336,7 @@ async function gsDeleteDetector(data) {
 async function gsSavePassword(username, hash) {
   if (!gsConnected) return;
   try {
-    await gsPost({ action: 'updatePassword', data: { username, passHash: hash } });
+    await gsPost({ action: 'updatePassword', data: { username, passHash: hash, auth: authPayload() } });
   } catch(err) {
     console.error('Save password error:', err);
   }
@@ -2666,7 +2700,7 @@ function parseExcelFile(buffer, filename) {
     if (gsConnected) {
       const allChanged = DETECTORS.filter(d => d._imported || d._updated);
       if (allChanged.length > 0) {
-        gsPost({ action: 'importDetectors', data: allChanged.map(d => ({
+        gsPost({ action: 'importDetectors', data: { auth: authPayload(), items: allChanged.map(d => ({
           tag: d.tag, description: d.description||'', location: d.location||'',
           type: d.type||'GAS', area: d.area||'', category: d.category||'',
           calInterval: d.calInterval||'', nextCalDate: d.nextCalDate||'',
@@ -2674,7 +2708,7 @@ function parseExcelFile(buffer, filename) {
             date: e.date, task: e.task||'', cylinder: e.cylinder||'',
             tech: e.tech||'', notes: e.notes||''
           }))
-        }))}).catch(()=>{});
+        })) }}).catch(()=>{});
         allChanged.forEach(d => { delete d._imported; delete d._updated; });
       }
     }
@@ -2952,6 +2986,11 @@ async function initPasswords() {
 }
 
 let currentUser = null;
+// Στέλνεται μαζί με admin-only backend actions ώστε ο server να επαληθεύει
+// ΞΑΝΑ τα δικαιώματα (δεν εμπιστευόμαστε πια μόνο τον client-side έλεγχο ρόλου).
+function authPayload() {
+  return currentUser ? { username: currentUser.username, passHash: currentUser.passHash } : null;
+}
 let currentPage = null;
 let selectedDetector = null;
 let detectorDetailOrigin = 'detectors'; // από ποια σελίδα μπήκαμε στο detail — εκεί γυρνάει το "←"
@@ -2973,25 +3012,20 @@ async function doLogin() {
     return;
   }
 
-  // Αν δεν βρέθηκε τοπικά ή λάθος κωδικός — ρώτα το Sheet
+  // Για οποιονδήποτε χρήστη πέρα από τους built-in defaults, η επαλήθευση
+  // γίνεται ΠΑΝΤΑ στον server (action:'login') — δεν τραβάμε πια τα password
+  // hash ΟΛΩΝ των χρηστών στη συσκευή για να τα συγκρίνουμε τοπικά. Αυτό
+  // σημαίνει ότι το login για μη-default χρήστες χρειάζεται σύνδεση.
   if (gsConnected || GS_URL) {
     const btn = document.getElementById('l-btn');
     if (btn) { btn.textContent = '...'; btn.disabled = true; }
     try {
-      const res = await gsGet({ action: 'getUsers' });
-      if (res && res.users) {
-        res.users.forEach(su => {
-          USERS[su.username] = {
-            passHash: su.passHash,
-            role:     su.role     || 'readonly',
-            name:     su.name     || su.username,
-            dept:     su.dept     || '',
-          };
-        });
-      }
-      user = USERS[u];
-      if (user && inputHash === user.passHash) {
-        loginSuccess(u, user);
+      const res = await gsPost({ action: 'login', data: { username: u, passHash: inputHash } });
+      if (res && res.ok && res.user) {
+        // Κρατάμε το inputHash τοπικά (όχι από τον server) ώστε ο χρήστης να
+        // μπορεί μετά να αλλάξει τον δικό του κωδικό / να κάνει admin ενέργειες
+        // χωρίς να ζητάμε ξανά τον server να μας πει το hash του.
+        loginSuccess(u, { ...res.user, passHash: inputHash });
         return;
       }
     } catch(e) {}
@@ -3151,13 +3185,9 @@ async function doChangePassword(targetUser, requireOld) {
   }
 
   const newHash = await hashPassword(newPass);
+  savePasswordHash(targetUser, newHash); // στέλνει auth με τον ΠΑΛΙΟ κωδικό — πρέπει να τρέξει πριν αλλάξουμε το currentUser.passHash παρακάτω
   USERS[targetUser].passHash = newHash;
-  if (gsConnected) {
-    gsPost({ action: 'updatePassword', data: {
-      username: targetUser, passHash: newHash
-    }}).catch(()=>{});
-  }
-  savePasswordHash(targetUser, newHash);
+  if (currentUser && currentUser.username === targetUser) currentUser.passHash = newHash;
   document.getElementById('chpass-overlay').remove();
   showToast(`✓ Ο κωδικός του ${targetUser} άλλαξε`);
 }
@@ -3258,13 +3288,34 @@ function renderDashboard(mc) {
 
   const monthNames = ['Ιαν','Φεβ','Μαρ','Απρ','Μαι','Ιουν','Ιουλ','Αυγ','Σεπ','Οκτ','Νοε','Δεκ'];
 
+  // ── Νέα KPIs (2η σειρά) ──
+  const todayISO = now.toISOString().split('T')[0];
+  const todaysJobs = DETECTORS.filter(d => getNextCalDate(d) === todayISO).length;
+
+  // "Εκκρεμούν" = βαθμονομήσεις ≤30 ημέρες + στοιχεία ΝΕΟ ΕΡΓΟ που δεν έχουν
+  // ακόμα μεταφερθεί στο κανονικό πρόγραμμα.
+  const npPending = (typeof NEWPROJECT_ITEMS !== 'undefined')
+    ? NEWPROJECT_ITEMS.filter(it => it.status !== NP_STATUS_DONE).length : 0;
+  const pendingCount = soon + npPending;
+
+  // "Ολοκληρωμένα" = εγγραφές βαθμονόμησης τις τελευταίες 7 μέρες.
+  const sevenDaysAgo = new Date(now); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const sevenDaysAgoISO = sevenDaysAgo.toISOString().split('T')[0];
+  const completedCount = recentEntries.filter(e => e.date >= sevenDaysAgoISO && e.date <= todayISO).length;
+
+  // Ομαδοποίηση τύπων — προσάρμοσε αν αλλάξει η λίστα DET_TYPES.
+  const GAS_TYPES  = ['GAS DETECTOR', 'TOXIC GAS DETECTOR', 'OXYGEN DETECTOR'];
+  const FIRE_TYPES = ['FIRE DETECTOR', 'SMOKE DETECTOR', 'FLAME DETECTOR', 'HEAT DETECTOR', 'LHD CABLE'];
+  const gasCount  = DETECTORS.filter(d => GAS_TYPES.includes(d.type)).length;
+  const fireCount = DETECTORS.filter(d => FIRE_TYPES.includes(d.type)).length;
+
   mc.innerHTML = `
     <div class="page-header">
       <div class="page-title">${t('dash-title')}</div>
       <div class="page-sub">${t('dash-sub')} · ${new Date().toLocaleDateString('el-GR')}</div>
     </div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:16px">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:8px">
       <div onclick="showKpiList('all')" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:10px;border-top:3px solid var(--accent);cursor:pointer">
         <div style="font-family:var(--mono);font-size:22px;color:var(--accent2)">${total}</div>
         <div style="font-size:10px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.5px">ΣΥΝΟΛΟ</div>
@@ -3284,6 +3335,29 @@ function renderDashboard(mc) {
         <div style="font-family:var(--mono);font-size:22px;color:var(--green2)">${okCount}</div>
         <div style="font-size:10px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.5px">ΕΝΤΟΣ</div>
         <div style="font-size:9px;color:var(--green2);font-family:var(--cond);margin-top:3px">▶ ΔΕΣ ΛΙΣΤΑ</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:8px;margin-bottom:16px">
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:8px 6px;text-align:center">
+        <div style="font-family:var(--mono);font-size:17px;color:var(--text)">${todaysJobs}</div>
+        <div style="font-size:8px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.3px">ΣΗΜΕΡΑ</div>
+      </div>
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:8px 6px;text-align:center">
+        <div style="font-family:var(--mono);font-size:17px;color:var(--accent2)">${pendingCount}</div>
+        <div style="font-size:8px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.3px">ΕΚΚΡΕΜΟΥΝ</div>
+      </div>
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:8px 6px;text-align:center">
+        <div style="font-family:var(--mono);font-size:17px;color:var(--green2)">${completedCount}</div>
+        <div style="font-size:8px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.3px">7 ΜΕΡΕΣ</div>
+      </div>
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:8px 6px;text-align:center">
+        <div style="font-family:var(--mono);font-size:17px;color:var(--blue2)">${gasCount}</div>
+        <div style="font-size:8px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.3px">GAS</div>
+      </div>
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:8px 6px;text-align:center">
+        <div style="font-family:var(--mono);font-size:17px;color:var(--red2)">${fireCount}</div>
+        <div style="font-size:8px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.3px">FIRE</div>
       </div>
     </div>
 
@@ -4247,14 +4321,125 @@ function renderStats(mc) {
         </div>
       </div>
     </div>
+
+    <div class="card">
+      <div class="card-title">📈 ΤΑΣΗ ΒΑΘΜΟΝΟΜΗΣΕΩΝ (12 ΜΗΝΕΣ)</div>
+      <div style="position:relative;height:220px"><canvas id="chart-monthly-trend"></canvas></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🔧 ΚΑΤΑΝΟΜΗ ΑΝΑ ΤΥΠΟ ΑΝΙΧΝΕΥΤΗ</div>
+      <div style="position:relative;height:240px"><canvas id="chart-type-dist"></canvas></div>
+    </div>
   `;
+  renderStatsCharts();
+}
+
+// ── Chart.js: φορτώνεται δυναμικά (ίδιο pattern με loadSheetJS) ──
+let chartJsLoaded = false;
+function loadChartJS(cb) {
+  if (chartJsLoaded && window.Chart) { cb(); return; }
+  const s = document.createElement('script');
+  s.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js';
+  s.onload = () => { chartJsLoaded = true; cb(); };
+  s.onerror = () => showToast('Σφάλμα φόρτωσης βιβλιοθήκης διαγραμμάτων', 'error');
+  document.head.appendChild(s);
+}
+
+// Κρατάμε αναφορές στα ενεργά charts ώστε να τα καταστρέφουμε πριν από κάθε
+// re-render — αλλιώς το Chart.js πετάει "Canvas is already in use".
+let _chartMonthly = null, _chartTypeDist = null;
+function renderStatsCharts() {
+  loadChartJS(() => {
+    const elMonthly = document.getElementById('chart-monthly-trend');
+    const elType     = document.getElementById('chart-type-dist');
+    if (!elMonthly || !elType) return; // ο χρήστης έφυγε από τη σελίδα πριν φορτώσει η βιβλιοθήκη
+
+    // ── Τάση ανά μήνα: πλήθος εγγραφών βαθμονόμησης τους τελευταίους 12 μήνες ──
+    const monthLabels = [];
+    const monthKeys = [];
+    const base = new Date();
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(base.getFullYear(), base.getMonth() - i, 1);
+      monthKeys.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+      monthLabels.push(d.toLocaleDateString('el-GR', { month: 'short', year: '2-digit' }));
+    }
+    const monthCounts = monthKeys.map(() => 0);
+    DETECTORS.forEach(d => d.entries.forEach(e => {
+      const key = String(e.date || '').slice(0, 7);
+      const idx = monthKeys.indexOf(key);
+      if (idx !== -1) monthCounts[idx]++;
+    }));
+
+    if (_chartMonthly) _chartMonthly.destroy();
+    _chartMonthly = new Chart(elMonthly, {
+      type: 'line',
+      data: {
+        labels: monthLabels,
+        datasets: [{
+          label: 'Εγγραφές',
+          data: monthCounts,
+          borderColor: '#1a5fa8',
+          backgroundColor: 'rgba(26,95,168,0.15)',
+          fill: true, tension: 0.3, pointRadius: 3,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+      },
+    });
+
+    // ── Κατανομή ανά τύπο ανιχνευτή ──
+    const typeCounts = {};
+    DETECTORS.forEach(d => { const ty = d.type || 'ΑΓΝΩΣΤΟ'; typeCounts[ty] = (typeCounts[ty]||0) + 1; });
+    const typeLabels = Object.keys(typeCounts);
+    const typeColors = ['#1a5fa8','#c0251e','#1a8a4a','#7a5800','#5a3a8a','#1a7a88','#a8471a','#555'];
+
+    if (_chartTypeDist) _chartTypeDist.destroy();
+    _chartTypeDist = new Chart(elType, {
+      type: 'doughnut',
+      data: {
+        labels: typeLabels,
+        datasets: [{
+          data: typeLabels.map(l => typeCounts[l]),
+          backgroundColor: typeLabels.map((_,i) => typeColors[i % typeColors.length]),
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } },
+      },
+    });
+  });
 }
 
 // ══ ADMIN ══
+let usersLoadedFresh = false;
 function renderAdmin(mc) {
   if (!ROLES[currentUser.role].canAdmin) {
     mc.innerHTML = `<div class="empty-state" style="margin-top:60px"><div class="empty-icon">🔒</div><div class="empty-text">Δεν έχεις πρόσβαση</div></div>`;
     return;
+  }
+
+  // Φρέσκια λίστα χρηστών από το Sheet (authenticated) — δεν τραβιέται πια σε
+  // κάθε γενικό sync, μόνο όταν ανοίγει ο admin το πάνελ διαχείρισης χρηστών.
+  if (gsConnected && !usersLoadedFresh) {
+    usersLoadedFresh = true; // αποφυγή διπλής κλήσης όσο περιμένουμε απάντηση
+    gsPost({ action: 'getUsers', data: { auth: authPayload() } }).then(res => {
+      if (res && res.users) {
+        res.users.forEach(u => {
+          USERS[u.username] = {
+            passHash: (USERS[u.username] && USERS[u.username].passHash) || '',
+            role: u.role || 'readonly',
+            name: u.name || u.username,
+            dept: u.dept || '',
+          };
+        });
+        if (currentPage === 'admin') renderAdmin(document.getElementById('main-content'));
+      }
+    }).catch(() => { usersLoadedFresh = false; });
   }
 
   mc.innerHTML = `
@@ -4610,6 +4795,7 @@ function changeRole(uname, newRole) {
       role:     newRole,
       dept:     USERS[uname].dept     || '',
       passHash: USERS[uname].passHash || '',
+      auth:     authPayload(),
     }}).then(() => showToast(`✓ Ρόλος ${uname} → ${newRole} αποθηκεύτηκε`))
       .catch(() => showToast('Αποθηκεύτηκε τοπικά μόνο','error'));
   } else {
@@ -4629,7 +4815,7 @@ async function addUser() {
   savePasswordHash(uname, hash);
   if (gsConnected) {
     gsPost({ action: 'saveUser', data: {
-      username: uname, name, role, dept: '', passHash: hash
+      username: uname, name, role, dept: '', passHash: hash, auth: authPayload(),
     }}).then(() => showToast(`✓ Χρήστης ${uname} αποθηκεύτηκε στο Sheet`))
       .catch(() => showToast(`✓ Χρήστης ${uname} προστέθηκε (offline)`));
   } else {
@@ -4651,7 +4837,7 @@ async function deleteUser(uname) {
   localStorage.removeItem('marnik26_pw_' + uname);
   // Διαγραφή από Sheet — saveUser με role=DELETED flag
   if (gsConnected) {
-    gsPost({ action: 'deleteUser', data: { username: uname } }).catch(()=>{});
+    gsPost({ action: 'deleteUser', data: { username: uname, auth: authPayload() } }).catch(()=>{});
   }
   showToast(`✓ Χρήστης ${uname} διαγράφηκε`);
   renderAdmin(document.getElementById('main-content'));
@@ -5704,7 +5890,7 @@ function exportActivityLogPDF() {
   @media print { .no-print { display:none!important; } }
 </style></head><body>
 <div class="hdr">
-  <div><div class="logo">VMR<span>TIN</span>26</div>
+  <div><div class="logo">MAR<span>NIK</span>26</div>
     <div style="font-size:11px;color:#888">Motor Oil Refineries · Instruments Dept</div></div>
   <div class="title">ΙΣΤΟΡΙΚΟ ΕΝΕΡΓΕΙΩΝ (AUDIT LOG)<br>
     <span style="color:#e8620c;font-size:11px">${filtered.length} εγγραφές${fu?' · '+fu:''}${fa?' · '+fa:''}</span>
@@ -5795,7 +5981,7 @@ async function confirmRestoreBackup(label, tsLabel) {
   document.getElementById('restorebackup-overlay')?.remove();
   showToast('⏳ Αποκατάσταση σε εξέλιξη...');
   try {
-    const res = await gsPost({ action: 'restoreBackup', data: { label } });
+    const res = await gsPost({ action: 'restoreBackup', data: { label, auth: authPayload() } });
     if (res && res.ok) {
       showToast(`✓ Αποκατάσταση OK — ${res.detectors} ανιχνευτές, ${res.entries} εγγραφές. Επαναφόρτωση...`);
       setTimeout(() => location.reload(), 1800);
@@ -5950,6 +6136,15 @@ function schedApplyMonthPick() {
   renderSchedule(document.getElementById('main-content'));
 }
 
+// Σειρά προτεραιότητας τύπων ανιχνευτή στο πρόγραμμα/εκτύπωση — ό,τι δεν
+// είναι στη λίστα πάει στο τέλος (αλφαβητικά μεταξύ τους).
+const TYPE_SORT_ORDER = ['GD','GID','TGD','TGID','FD','HFD','HD','LOS','SD'];
+function typeSortRank(type) {
+  const t = String(type || '').trim().toUpperCase();
+  const idx = TYPE_SORT_ORDER.indexOf(t);
+  return idx === -1 ? TYPE_SORT_ORDER.length : idx;
+}
+
 function getDetectorsForSchedMonth(m, y) {
   // Επιστρέφει ανιχνευτές που:
   // (α) έχουν nextCalDate σε αυτόν τον μήνα/έτος, ΚΑΙ/Ή
@@ -6043,6 +6238,7 @@ function renderSchedule(mc) {
       itemHtml = `<div class="empty-state"><div class="empty-icon">${schedViewFilter === 'done' ? '📋' : '✅'}</div><div class="empty-text">${emptyMsg}</div></div>`;
     } else {
       Object.entries(byAreaFiltered).sort(([a],[b]) => a.localeCompare(b)).forEach(([area, list]) => {
+        list.sort((a,b) => typeSortRank(a.type) - typeSortRank(b.type) || a.tag.localeCompare(b.tag));
         const areaLinkCount = getLinksForEntity('AREA', area).length;
         itemHtml += `<div class="sched-area-header" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
           <span>📍 ${area} (${list.length})</span>
@@ -6261,6 +6457,7 @@ function exportSchedulePDF(m, y, pdfFilter) {
   const dets = usedFilter === 'done' ? allDets.filter(d =>  detHasEntryInMonth(d, usedM, usedY))
              : usedFilter === 'pend' ? allDets.filter(d => !detHasEntryInMonth(d, usedM, usedY))
              : allDets;
+  dets.sort((a,b) => typeSortRank(a.type) - typeSortRank(b.type) || a.tag.localeCompare(b.tag));
 
   const filterLabel = usedFilter === 'done' ? ' · ΕΛΕΓΧΘΗΚΑΝ ΜΟΝΟ'
                     : usedFilter === 'pend' ? ' · ΕΚΚΡΕΜΟΥΝ ΜΟΝΟ' : '';
@@ -6312,7 +6509,7 @@ function exportSchedulePDF(m, y, pdfFilter) {
 </style></head><body>
 <div class="header">
   <div>
-    <div class="logo">VMR<span>TIN</span>26</div>
+    <div class="logo">MAR<span>NIK</span>26</div>
     <div class="subtitle">Motor Oil Refineries · Instruments Dept</div>
   </div>
   <div class="title">
@@ -6437,6 +6634,18 @@ function renderNpProjectList(mc) {
   `;
 }
 
+// ── Live search χωρίς απώλεια focus/cursor (ίδιο pattern με schedOnSearchInput) ──
+function npOnSearchInput(el) {
+  npSearchQ = el.value;
+  const cursorPos = el.selectionStart;
+  renderNewProject(document.getElementById('main-content'));
+  const newEl = document.getElementById('np-search-input');
+  if (newEl) {
+    newEl.focus();
+    newEl.setSelectionRange(cursorPos, cursorPos);
+  }
+}
+
 function openNpProject(name) {
   currentNpProject = name;
   currentNpFilter  = 'ΟΛΑ';
@@ -6497,9 +6706,9 @@ function renderNpProjectDetail(mc) {
       </button>
     </div>
 
-    <input type="search" value="${npSearchQ}" placeholder="🔍 TAG ή τοποθεσία..."
+    <input type="search" value="${npSearchQ}" placeholder="🔍 TAG ή τοποθεσία..." id="np-search-input"
       style="width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:9px 12px;font-size:14px;box-sizing:border-box;margin-bottom:8px"
-      oninput="npSearchQ=this.value;renderNewProject(document.getElementById('main-content'))">
+      oninput="npOnSearchInput(this)">
 
     <div style="display:flex;gap:6px;margin-bottom:14px;overflow-x:auto;padding-bottom:2px">
       <button onclick="currentNpFilter='ΟΛΑ';renderNewProject(document.getElementById('main-content'))"
@@ -6876,7 +7085,7 @@ function exportNewProjectPDF(projectFilter) {
 </style></head><body>
 <div class="header">
   <div>
-    <div class="logo">VMR<span>TIN</span>26</div>
+    <div class="logo">MAR<span>NIK</span>26</div>
     <div class="subtitle">Motor Oil Refineries · Instruments Dept</div>
   </div>
   <div class="title">
@@ -7507,7 +7716,7 @@ function exportNewProjectDetailedPDF(projectFilter) {
 </style></head><body>
 <div class="header">
   <div>
-    <div class="logo">VMR<span>TIN</span>26</div>
+    <div class="logo">MAR<span>NIK</span>26</div>
     <div class="subtitle">Motor Oil Refineries · Instruments Dept</div>
   </div>
   <div class="title">
@@ -7922,7 +8131,7 @@ function exportCylindersPDF(monthKey) {
 </style></head><body>
 <div class="header">
   <div>
-    <div class="logo">VMR<span>TIN</span>26</div>
+    <div class="logo">MAR<span>NIK</span>26</div>
     <div class="subtitle">Motor Oil Refineries · Instruments Dept</div>
   </div>
   <div class="title">
