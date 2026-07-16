@@ -2295,11 +2295,13 @@ async function gsSaveDetector(det) {
 
 // ── Update next cal date ──
 async function gsUpdateDetector(data) {
-  if (!gsConnected) return;
+  if (!gsConnected) { queueAction('updateDetector', data); return; }
   try {
     await gsPost({ action: 'updateDetector', data });
   } catch(err) {
     console.error('Update detector error:', err);
+    queueAction('updateDetector', data);
+    showToast('⚠ Αποθηκεύτηκε τοπικά — θα σταλεί αυτόματα στο Sheet', 'error');
   }
 }
 
@@ -3338,26 +3340,26 @@ function renderDashboard(mc) {
       </div>
     </div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:8px;margin-bottom:16px">
-      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:8px 6px;text-align:center">
-        <div style="font-family:var(--mono);font-size:17px;color:var(--text)">${todaysJobs}</div>
-        <div style="font-size:8px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.3px">ΣΗΜΕΡΑ</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px">
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:10px 8px;text-align:center">
+        <div style="font-family:var(--mono);font-size:20px;color:var(--text)">${todaysJobs}</div>
+        <div style="font-size:10px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.4px;margin-top:2px">ΣΗΜΕΡΑ</div>
       </div>
-      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:8px 6px;text-align:center">
-        <div style="font-family:var(--mono);font-size:17px;color:var(--accent2)">${pendingCount}</div>
-        <div style="font-size:8px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.3px">ΕΚΚΡΕΜΟΥΝ</div>
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:10px 8px;text-align:center">
+        <div style="font-family:var(--mono);font-size:20px;color:var(--accent2)">${pendingCount}</div>
+        <div style="font-size:10px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.4px;margin-top:2px">ΕΚΚΡΕΜΟΥΝ</div>
       </div>
-      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:8px 6px;text-align:center">
-        <div style="font-family:var(--mono);font-size:17px;color:var(--green2)">${completedCount}</div>
-        <div style="font-size:8px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.3px">7 ΜΕΡΕΣ</div>
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:10px 8px;text-align:center">
+        <div style="font-family:var(--mono);font-size:20px;color:var(--green2)">${completedCount}</div>
+        <div style="font-size:10px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.4px;margin-top:2px">7 ΜΕΡΕΣ</div>
       </div>
-      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:8px 6px;text-align:center">
-        <div style="font-family:var(--mono);font-size:17px;color:var(--blue2)">${gasCount}</div>
-        <div style="font-size:8px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.3px">GAS</div>
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:10px 8px;text-align:center;grid-column:span 1">
+        <div style="font-family:var(--mono);font-size:20px;color:var(--blue2)">${gasCount}</div>
+        <div style="font-size:10px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.4px;margin-top:2px">GAS DETECTORS</div>
       </div>
-      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:8px 6px;text-align:center">
-        <div style="font-family:var(--mono);font-size:17px;color:var(--red2)">${fireCount}</div>
-        <div style="font-size:8px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.3px">FIRE</div>
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:10px 8px;text-align:center;grid-column:span 2">
+        <div style="font-family:var(--mono);font-size:20px;color:var(--red2)">${fireCount}</div>
+        <div style="font-size:10px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.4px;margin-top:2px">FIRE DETECTORS</div>
       </div>
     </div>
 
@@ -4340,7 +4342,7 @@ let chartJsLoaded = false;
 function loadChartJS(cb) {
   if (chartJsLoaded && window.Chart) { cb(); return; }
   const s = document.createElement('script');
-  s.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js';
+  s.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js';
   s.onload = () => { chartJsLoaded = true; cb(); };
   s.onerror = () => showToast('Σφάλμα φόρτωσης βιβλιοθήκης διαγραμμάτων', 'error');
   document.head.appendChild(s);
