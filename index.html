@@ -1595,7 +1595,13 @@ function savePendingQueue() {
 function queueAction(action, data) {
   if (QUEUE_EXCLUDED_ACTIONS.has(action)) return null;
   const id = 'pq_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
-  PENDING_QUEUE.push({ id, action, data, ts: Date.now(), retries: 0 });
+  // ΣΗΜΑΝΤΙΚΟ: ενσωματώνουμε το auth ΤΩΡΑ (στιγμή καταχώρησης στην ουρά), όχι
+  // όταν θα σταλεί αργότερα η ουρά — μέχρι πρότινος admin-only ενέργειες όπως
+  // updateEntry/deleteEntry/renameDetector έμπαιναν στην ουρά ΧΩΡΙΣ auth και
+  // απέτυχαν σιωπηλά με "μη έγκυρη σύνδεση" όταν προσπαθούσαν να σταλούν.
+  const payload = (data && typeof data === 'object' && data.auth === undefined)
+    ? { ...data, auth: authPayload() } : data;
+  PENDING_QUEUE.push({ id, action, data: payload, ts: Date.now(), retries: 0 });
   savePendingQueue();
   return id;
 }
@@ -1951,6 +1957,12 @@ async function flushPendingChanges() {
   try {
     for (const item of [...PENDING_QUEUE]) {
       if (item.retries >= QUEUE_MAX_RETRIES) continue; // "κολλημένο" — δεν ξαναπροσπαθεί μόνο του
+      // Safety net: παλιά items από πριν το auth-fix (migration) ή οτιδήποτε
+      // έμεινε χωρίς auth, παίρνουν τα credentials του ΤΩΡΙΝΟΥ συνδεδεμένου
+      // χρήστη πριν σταλούν — καλύτερα αυτό παρά σίγουρη αποτυχία στον server.
+      if (item.data && typeof item.data === 'object' && !item.data.auth) {
+        item.data = { ...item.data, auth: authPayload() };
+      }
       try {
         await gsPost({ action: item.action, data: item.data });
         PENDING_QUEUE = PENDING_QUEUE.filter(q => q.id !== item.id);
@@ -2285,23 +2297,42 @@ async function gsDeleteEntry(data) {
 
 // ── Save detector to Google Sheets ──
 async function gsSaveDetector(det) {
-  if (!gsConnected) return;
+  if (!gsConnected) {
+    showToast('⚠ Χωρίς σύνδεση — ο ανιχνευτής αποθηκεύτηκε μόνο τοπικά, χρειάζεται σύνδεση για το Sheet', 'error');
+    return false;
+  }
   try {
     await gsPost({ action: 'addDetector', data: { ...det, auth: authPayload() } });
+    return true;
   } catch(err) {
     console.error('Save detector error:', err);
+    showToast('⚠ Ο ανιχνευτής δεν έφτασε στο Sheet — ξαναπροσπάθησε', 'error');
+    return false;
   }
 }
 
 // ── Update next cal date ──
+// Χειροκίνητη επεξεργασία πεδίων ανιχνευτή (admin-only, action:'updateDetector')
 async function gsUpdateDetector(data) {
   if (!gsConnected) { queueAction('updateDetector', data); return; }
   try {
-    await gsPost({ action: 'updateDetector', data });
+    await gsPost({ action: 'updateDetector', data: { ...data, auth: authPayload() } });
   } catch(err) {
     console.error('Update detector error:', err);
     queueAction('updateDetector', data);
     showToast('⚠ Αποθηκεύτηκε τοπικά — θα σταλεί αυτόματα στο Sheet', 'error');
+  }
+}
+
+// Αυτόματη ενημέρωση επόμενης βαθμονόμησης μετά από καταχώρηση εργασίας
+// (ΟΧΙ admin-only, το κάνει κάθε τεχνίτης — action:'updateDetectorAuto')
+async function gsAutoUpdateNextCal(data) {
+  if (!gsConnected) { queueAction('updateDetectorAuto', data); return; }
+  try {
+    await gsPost({ action: 'updateDetectorAuto', data });
+  } catch(err) {
+    console.error('Auto-update next cal error:', err);
+    queueAction('updateDetectorAuto', data);
   }
 }
 
@@ -2336,11 +2367,15 @@ async function gsDeleteDetector(data) {
 
 // ── Save password hash ──
 async function gsSavePassword(username, hash) {
-  if (!gsConnected) return;
+  if (!gsConnected) {
+    showToast('⚠ Χωρίς σύνδεση — ο κωδικός άλλαξε μόνο τοπικά, ξαναπροσπάθησε όταν επανέλθει η σύνδεση', 'error');
+    return;
+  }
   try {
     await gsPost({ action: 'updatePassword', data: { username, passHash: hash, auth: authPayload() } });
   } catch(err) {
     console.error('Save password error:', err);
+    showToast('⚠ Ο κωδικός δεν έφτασε στο Sheet — ξαναπροσπάθησε', 'error');
   }
 }
 
@@ -2565,7 +2600,7 @@ function handleFileImport(input) {
   input.value = ''; // reset so same file can be re-imported
 }
 
-function parseExcelFile(buffer, filename) {
+async function parseExcelFile(buffer, filename) {
   try {
     showToast('⟳ Ανάγνωση αρχείου...', 'info');
     const wb = XLSX.read(buffer, { type: 'array', cellDates: true });
@@ -2699,23 +2734,33 @@ function parseExcelFile(buffer, filename) {
 
     // Push to Google Sheets if connected
     // Στέλνουμε ΟΛΟΥΣ (νέους + ενημερωμένους) — το Sheet κάνει upsert
+    let sheetSyncFailed = false;
     if (gsConnected) {
       const allChanged = DETECTORS.filter(d => d._imported || d._updated);
       if (allChanged.length > 0) {
-        gsPost({ action: 'importDetectors', data: { auth: authPayload(), items: allChanged.map(d => ({
-          tag: d.tag, description: d.description||'', location: d.location||'',
-          type: d.type||'GAS', area: d.area||'', category: d.category||'',
-          calInterval: d.calInterval||'', nextCalDate: d.nextCalDate||'',
-          entries: (d.entries||[]).map(e => ({
-            date: e.date, task: e.task||'', cylinder: e.cylinder||'',
-            tech: e.tech||'', notes: e.notes||''
-          }))
-        })) }}).catch(()=>{});
-        allChanged.forEach(d => { delete d._imported; delete d._updated; });
+        try {
+          await gsPost({ action: 'importDetectors', data: { auth: authPayload(), items: allChanged.map(d => ({
+            tag: d.tag, description: d.description||'', location: d.location||'',
+            type: d.type||'GAS', area: d.area||'', category: d.category||'',
+            calInterval: d.calInterval||'', nextCalDate: d.nextCalDate||'',
+            entries: (d.entries||[]).map(e => ({
+              date: e.date, task: e.task||'', cylinder: e.cylinder||'',
+              tech: e.tech||'', notes: e.notes||''
+            }))
+          })) }});
+          allChanged.forEach(d => { delete d._imported; delete d._updated; });
+        } catch(err) {
+          console.error('importDetectors error:', err);
+          sheetSyncFailed = true;
+        }
       }
+    } else {
+      sheetSyncFailed = true;
     }
 
-    showToast(`✓ ${filename}: ${imported} νέοι · ${updated} ενημερώθηκαν · ${entryCount} εγγραφές`);
+    showToast(sheetSyncFailed
+      ? `⚠ ${filename}: ${imported} νέοι · ${updated} ενημερώθηκαν τοπικά — ΔΕΝ έφτασαν ακόμα στο Sheet, χρειάζεται σύνδεση`
+      : `✓ ${filename}: ${imported} νέοι · ${updated} ενημερώθηκαν · ${entryCount} εγγραφές`, sheetSyncFailed ? 'error' : undefined);
     if (currentPage) showPage(currentPage);
 
   } catch(err) {
@@ -4008,7 +4053,7 @@ function saveTagRename(oldTag) {
 }
 
 // ── Ολοκληρωτική διαγραφή ανιχνευτή + ιστορικού (admin only) ──
-function deleteDetectorCompletely(tag) {
+async function deleteDetectorCompletely(tag) {
   const det = DETECTORS.find(d => d.tag === tag);
   if (!det) return;
   const entCount = det.entries.length;
@@ -4019,17 +4064,20 @@ function deleteDetectorCompletely(tag) {
   if (!DELETED_DET_TAGS.includes(tag)) DELETED_DET_TAGS.push(tag);
   saveDeletedDetTags();
   saveDetectors();
-
-  gsDeleteDetector({ tag }).then(ok => {
-    if (ok) {
-      DELETED_DET_TAGS = DELETED_DET_TAGS.filter(x => x !== tag);
-      saveDeletedDetTags();
-    }
-  });
-  logActivity('DELETE_DETECTOR', `${tag} · ${entCount} εγγραφές`);
-
-  showToast(`✓ Ο ${tag} διαγράφηκε ολοκληρωτικά`);
   showPage(detectorDetailOrigin);
+
+  // ΣΗΜΑΝΤΙΚΟ: περιμένουμε το πραγματικό αποτέλεσμα πριν πούμε "διαγράφηκε" —
+  // πριν έδειχνε πάντα "✓ επιτυχία" ακόμα κι αν η διαγραφή ποτέ δεν έφτασε στο
+  // Sheet (offline/αποτυχία), κάτι που παραπλανούσε τον χρήστη.
+  const ok = await gsDeleteDetector({ tag });
+  if (ok) {
+    DELETED_DET_TAGS = DELETED_DET_TAGS.filter(x => x !== tag);
+    saveDeletedDetTags();
+    logActivity('DELETE_DETECTOR', `${tag} · ${entCount} εγγραφές`);
+    showToast(`✓ Ο ${tag} διαγράφηκε ολοκληρωτικά`);
+  } else {
+    showToast(`⚠ Ο ${tag} διαγράφηκε τοπικά αλλά ΔΕΝ έφτασε ακόμα στο Sheet — χρειάζεται σύνδεση, ξαναπροσπάθησε τη διαγραφή αργότερα`, 'error');
+  }
 }
 
 function showQRModal(tag) {
@@ -4232,7 +4280,7 @@ function submitEntry() {
   const nextDate = new Date(date);
   nextDate.setMonth(nextDate.getMonth() + interval);
   det.nextCalDate = nextDate.toISOString().split('T')[0];
-  gsUpdateDetector({ tag, nextCalDate: det.nextCalDate });
+  gsAutoUpdateNextCal({ tag, nextCalDate: det.nextCalDate });
 
   selectedTasks = [];
   selectedDetector = det;
@@ -4819,7 +4867,7 @@ async function addUser() {
     gsPost({ action: 'saveUser', data: {
       username: uname, name, role, dept: '', passHash: hash, auth: authPayload(),
     }}).then(() => showToast(`✓ Χρήστης ${uname} αποθηκεύτηκε στο Sheet`))
-      .catch(() => showToast(`✓ Χρήστης ${uname} προστέθηκε (offline)`));
+      .catch((err) => showToast(`⚠ Ο χρήστης ${uname} ΔΕΝ αποθηκεύτηκε στο Sheet — ${err.message || 'σφάλμα'}`, 'error'));
   } else {
     showToast(`✓ Χρήστης ${uname} προστέθηκε (offline)`);
   }
@@ -4835,13 +4883,19 @@ async function deleteUser(uname) {
   if (uname === 'admin') { showToast('Δεν μπορείς να διαγράψεις τον admin','error'); return; }
   if (uname === currentUser.username) { showToast('Δεν μπορείς να διαγράψεις τον εαυτό σου','error'); return; }
   if (!confirm(`Διαγραφή χρήστη "${uname}";\nΗ ενέργεια είναι μη αναστρέψιμη.`)) return;
-  delete USERS[uname];
-  localStorage.removeItem('marnik26_pw_' + uname);
-  // Διαγραφή από Sheet — saveUser με role=DELETED flag
-  if (gsConnected) {
-    gsPost({ action: 'deleteUser', data: { username: uname, auth: authPayload() } }).catch(()=>{});
+  if (!gsConnected) {
+    showToast('⚠ Χωρίς σύνδεση — χρειάζεται σύνδεση για διαγραφή χρήστη', 'error');
+    return;
   }
-  showToast(`✓ Χρήστης ${uname} διαγράφηκε`);
+  try {
+    await gsPost({ action: 'deleteUser', data: { username: uname, auth: authPayload() } });
+    delete USERS[uname];
+    localStorage.removeItem('marnik26_pw_' + uname);
+    showToast(`✓ Χρήστης ${uname} διαγράφηκε`);
+  } catch(err) {
+    console.error('deleteUser error:', err);
+    showToast(`⚠ Ο χρήστης ${uname} ΔΕΝ διαγράφηκε — ${err.message || 'σφάλμα'}`, 'error');
+  }
   renderAdmin(document.getElementById('main-content'));
 }
 
