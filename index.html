@@ -1495,6 +1495,17 @@ let DET_AREAS = [
 
 let DET_CATEGORIES = Object.keys(CAL_INTERVALS).filter(k => k !== 'DEFAULT');
 
+// Η DET_AREAS είναι απλά μια λίστα-πρόταση· ΔΕΝ είναι δεσμευτική — τεχνίτες
+// μπορεί να έχουν καταχωρήσει περιοχές (π.χ. ΚΑΥΣΙΜΑ, ΓΕΝΝΗΤΡΙΕΣ, ΒΕΝΖΙΝΕΣ)
+// που δεν είναι στη λίστα. Αυτό το helper ενώνει τα δύο σύνολα ώστε τα
+// dropdown επιλογής περιοχής να δείχνουν ΠΑΝΤΑ όλες τις πραγματικές περιοχές
+// που ήδη χρησιμοποιούνται, όχι μόνο τη στατική λίστα-πρόταση.
+function getAllAreaOptions() {
+  const real = new Set(DETECTORS.map(d => String(d.area || '').trim()).filter(Boolean));
+  DET_AREAS.forEach(a => real.add(a));
+  return Array.from(real).sort((a,b) => a.localeCompare(b, 'el'));
+}
+
 // Load saved lists from localStorage
 function loadSavedLists() {
   try {
@@ -2425,6 +2436,31 @@ function getNextCalDate(det) {
   return d.toISOString().split('T')[0];
 }
 
+// "Ρίσκο" ανιχνευτή = πόσο εκπρόθεσμος είναι + πόσες φορές χρειάστηκε επέμβαση
+// (οτιδήποτε πέρα από απλή Βαθμονόμηση — αλλαγή αισθητήρα/κάρτας/καλωδίου/κλπ).
+// Κάθε επέμβαση μετράει σαν 15 "μέρες εκπρόθεσμου" στο σκορ, ώστε ένα όργανο
+// με συχνά προβλήματα να ξεχωρίζει ακόμα κι αν τυπικά είναι εντός προγράμματος.
+function computeDetectorRisk(det) {
+  const next = getNextCalDate(det);
+  let overdueDays = 0;
+  if (next) {
+    const diff = Math.round((new Date() - new Date(next)) / 86400000);
+    if (diff > 0) overdueDays = diff;
+  }
+  let repairCount = 0;
+  det.entries.forEach(e => {
+    const tasks = String(e.task || '').split('|').map(s => s.trim()).filter(Boolean);
+    if (tasks.some(t => t !== 'Βαθμονόμηση')) repairCount++;
+  });
+  return { tag: det.tag, area: det.area, location: det.location, overdueDays, repairCount, score: overdueDays + repairCount * 15 };
+}
+function getHighRiskDetectors(limit) {
+  return DETECTORS.map(computeDetectorRisk)
+    .filter(r => r.score > 0)
+    .sort((a,b) => b.score - a.score)
+    .slice(0, limit || 15);
+}
+
 function getAlertStatus(det) {
   const next = getNextCalDate(det);
   if (!next) return 'none';
@@ -3350,11 +3386,11 @@ function renderDashboard(mc) {
   const sevenDaysAgoISO = sevenDaysAgo.toISOString().split('T')[0];
   const completedCount = recentEntries.filter(e => e.date >= sevenDaysAgoISO && e.date <= todayISO).length;
 
-  // Ομαδοποίηση τύπων — προσάρμοσε αν αλλάξει η λίστα DET_TYPES.
-  const GAS_TYPES  = ['GAS DETECTOR', 'TOXIC GAS DETECTOR', 'OXYGEN DETECTOR'];
-  const FIRE_TYPES = ['FIRE DETECTOR', 'SMOKE DETECTOR', 'FLAME DETECTOR', 'HEAT DETECTOR', 'LHD CABLE'];
-  const gasCount  = DETECTORS.filter(d => GAS_TYPES.includes(d.type)).length;
-  const fireCount = DETECTORS.filter(d => FIRE_TYPES.includes(d.type)).length;
+  // Οι κατηγορίες ασφαλείας είναι στο πεδίο CATEGORY, όχι TYPE — το TYPE έχει
+  // μόνο λίγες γενικές τιμές (GAS/FIRE), ενώ το CATEGORY είναι αυτό που δείχνει
+  // πραγματικά αν ένας ανιχνευτής είναι τοξικών ή εύφλεκτων αερίων κλπ.
+  const toxicCount    = DETECTORS.filter(d => d.category === 'ΤΟΞΙΚΑ ΑΕΡΙΑ').length;
+  const flammableCount = DETECTORS.filter(d => d.category === 'ΕΎΦΛΕΚΤΑ ΑΕΡΙΑ' || d.category === 'ΕΥΦΛΕΚΤΑ ΑΕΡΙΑ').length;
 
   mc.innerHTML = `
     <div class="page-header">
@@ -3399,12 +3435,12 @@ function renderDashboard(mc) {
         <div style="font-size:10px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.4px;margin-top:2px">7 ΜΕΡΕΣ</div>
       </div>
       <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:10px 8px;text-align:center;grid-column:span 1">
-        <div style="font-family:var(--mono);font-size:20px;color:var(--blue2)">${gasCount}</div>
-        <div style="font-size:10px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.4px;margin-top:2px">GAS DETECTORS</div>
+        <div style="font-family:var(--mono);font-size:20px;color:var(--red2)">${toxicCount}</div>
+        <div style="font-size:10px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.4px;margin-top:2px">ΤΟΞΙΚΑ ΑΕΡΙΑ</div>
       </div>
       <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:10px 8px;text-align:center;grid-column:span 2">
-        <div style="font-family:var(--mono);font-size:20px;color:var(--red2)">${fireCount}</div>
-        <div style="font-size:10px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.4px;margin-top:2px">FIRE DETECTORS</div>
+        <div style="font-family:var(--mono);font-size:20px;color:var(--blue2)">${flammableCount}</div>
+        <div style="font-size:10px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.4px;margin-top:2px">ΕΥΦΛΕΚΤΑ ΑΕΡΙΑ</div>
       </div>
     </div>
 
@@ -3690,7 +3726,7 @@ function renderDetectorDetail(mc) {
           📍 ${d.area} ▾
           <select id="area-picker" style="display:none;position:absolute;top:100%;left:0;z-index:999;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px;font-size:12px;min-width:120px"
             onchange="setDetArea('${d.tag}',this.value)" onclick="event.stopPropagation()">
-            ${DET_AREAS.map(a => `<option value="${a}" ${d.area===a?'selected':''}>${a}</option>`).join('')}
+            ${getAllAreaOptions().map(a => `<option value="${a}" ${d.area===a?'selected':''}>${a}</option>`).join('')}
           </select>
         </span>` : `<span class="meta-badge meta-area">${d.area}</span>`}
         ${ROLES[currentUser.role].canAdmin ? `
@@ -4327,6 +4363,11 @@ function renderStats(mc) {
       <div class="page-title">${t('stats-title')}</div>
       <div class="page-sub">${t('stats-sub')} · ${total} εγγραφές</div>
     </div>
+    <div class="card" style="text-align:center">
+      <button onclick="exportExecutiveReportPDF()" style="background:var(--accent);color:#fff;border:none;padding:12px 28px;font-size:14px;font-weight:700;border-radius:8px;cursor:pointer;font-family:var(--cond);letter-spacing:0.5px">
+        📄 ΕΚΤΥΠΩΣΗ ΕΚΤΕΛΕΣΤΙΚΗΣ ΑΝΑΦΟΡΑΣ
+      </button>
+    </div>
     <div class="card">
       <div class="card-title">ΤΥΠΟΣ ΕΡΓΑΣΙΑΣ</div>
       <div class="bar-chart-wrap">
@@ -4378,7 +4419,7 @@ function renderStats(mc) {
     </div>
 
     <div class="card">
-      <div class="card-title">🔧 ΚΑΤΑΝΟΜΗ ΑΝΑ ΤΥΠΟ ΑΝΙΧΝΕΥΤΗ</div>
+      <div class="card-title">🔧 ΚΑΤΑΝΟΜΗ ΑΝΑ ΚΑΤΗΓΟΡΙΑ ΑΝΙΧΝΕΥΤΗ</div>
       <div style="position:relative;height:240px"><canvas id="chart-type-dist"></canvas></div>
     </div>
 
@@ -4386,8 +4427,141 @@ function renderStats(mc) {
       <div class="card-title">🔩 ΣΥΧΝΟΤΕΡΕΣ ΑΛΛΑΓΕΣ ΑΙΣΘΗΤΗΡΑ (TOP 15)</div>
       <div style="position:relative;height:240px"><canvas id="chart-sensor-changes"></canvas></div>
     </div>
+
+    <div class="card">
+      <div class="card-title" style="color:var(--red2)">⚠️ ΑΝΙΧΝΕΥΤΕΣ ΥΨΗΛΟΥ ΡΙΣΚΟΥ</div>
+      <div style="font-size:11px;color:var(--text3);font-family:var(--cond);margin-bottom:10px">
+        Συνδυασμός: μέρες εκπρόθεσμου + συχνότητα επεμβάσεων (αλλαγή αισθητήρα/κάρτας/καλωδίου)
+      </div>
+      ${getHighRiskDetectors(10).map((r,i) => `
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+          <div style="width:22px;text-align:center;font-family:var(--mono);color:var(--text3);font-size:12px">${i+1}</div>
+          <div style="flex:1">
+            <div style="font-family:var(--mono);font-weight:700;color:var(--accent2)">${r.tag}</div>
+            <div style="font-size:10px;color:var(--text3);font-family:var(--cond)">${r.area||'—'}${r.location ? ' · '+r.location : ''}</div>
+          </div>
+          <div style="text-align:right">
+            ${r.overdueDays > 0 ? `<div style="font-size:11px;color:var(--red2);font-weight:600">${r.overdueDays}μ εκπρόθεσμος</div>` : ''}
+            ${r.repairCount > 0 ? `<div style="font-size:11px;color:var(--accent2)">${r.repairCount}× επέμβαση</div>` : ''}
+          </div>
+        </div>
+      `).join('') || '<div class="empty-state"><div class="empty-text">Κανένας ανιχνευτής με ρίσκο αυτή τη στιγμή 🎉</div></div>'}
+    </div>
   `;
   renderStatsCharts();
+}
+
+// ══ ΕΚΤΕΛΕΣΤΙΚΗ ΑΝΑΦΟΡΑ — μονοσέλιδη σύνοψη για παρουσίαση σε διοίκηση ══
+function exportExecutiveReportPDF() {
+  const total = DETECTORS.length;
+  let overdue = 0, soon = 0, okCount = 0;
+  DETECTORS.forEach(d => {
+    const st = getAlertStatus(d);
+    if (st === 'overdue') overdue++;
+    else if (st === 'soon') soon++;
+    else if (st === 'ok') okCount++;
+  });
+  const completedTotal = DETECTORS.filter(d => d.entries.length > 0).length;
+  const compliance = total > 0 ? Math.round((completedTotal / total) * 100) : 0;
+
+  const areaStats = {};
+  DETECTORS.forEach(d => {
+    if (!areaStats[d.area]) areaStats[d.area] = {total:0,done:0};
+    areaStats[d.area].total++;
+    if (d.entries.length>0) areaStats[d.area].done++;
+  });
+
+  const riskList = getHighRiskDetectors(10);
+
+  const areaRows = Object.entries(areaStats).sort((a,b)=>b[1].total-a[1].total).map(([area,s]) => {
+    const pct = Math.round(s.done/s.total*100);
+    return `<tr>
+      <td style="font-weight:700">${area}</td>
+      <td style="text-align:center">${s.total}</td>
+      <td>
+        <div style="background:#eee;border-radius:4px;height:10px;width:100%;overflow:hidden">
+          <div style="background:${pct>=90?'#1e7a42':pct>=60?'#b06000':'#c0251e'};height:100%;width:${pct}%"></div>
+        </div>
+      </td>
+      <td style="text-align:center;font-weight:700;color:${pct>=90?'#1e7a42':pct>=60?'#b06000':'#c0251e'}">${pct}%</td>
+    </tr>`;
+  }).join('');
+
+  const riskRows = riskList.map((r,i) => `<tr>
+    <td style="text-align:center;color:#888">${i+1}</td>
+    <td style="font-family:monospace;font-weight:700;color:#1a5fa8">${r.tag}</td>
+    <td>${r.area||'—'}${r.location ? ' · '+r.location : ''}</td>
+    <td style="text-align:center;color:#c0251e">${r.overdueDays > 0 ? r.overdueDays+'μ' : '—'}</td>
+    <td style="text-align:center;color:#b06000">${r.repairCount > 0 ? r.repairCount+'×' : '—'}</td>
+  </tr>`).join('') || `<tr><td colspan="5" style="text-align:center;padding:16px;color:#aaa">Κανένας ανιχνευτής με ρίσκο αυτή τη στιγμή</td></tr>`;
+
+  const html = `<!DOCTYPE html><html lang="el"><head><meta charset="UTF-8">
+<title>Εκτελεστική Αναφορά — MARNIK26</title>
+<style>
+  body { font-family: Arial, sans-serif; margin:0; padding:16px; background:#fff; color:#222; font-size:12px; }
+  .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px; border-bottom:2px solid #1a2535; padding-bottom:8px; }
+  .logo { font-size:20px; font-weight:900; color:#1a2535; letter-spacing:1px; }
+  .logo span { color:#e8620c; }
+  .title { font-size:16px; font-weight:700; color:#1a5fa8; text-align:right; }
+  .subtitle { font-size:10px; color:#666; }
+  .kpis { display:flex; gap:10px; margin-bottom:16px; }
+  .kpi-box { flex:1; background:#f0f4f8; border-radius:8px; padding:10px 6px; text-align:center; border-top:3px solid #1a5fa8; }
+  .kpi-val { font-size:24px; font-weight:900; }
+  .kpi-lbl { font-size:9px; color:#666; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; margin-top:2px; }
+  .section-title { font-size:13px; font-weight:700; color:#1a2535; margin:18px 0 8px; padding-bottom:4px; border-bottom:1px solid #ddd; }
+  table { width:100%; border-collapse:collapse; font-size:11px; }
+  th { background:#1a2535; color:#60aaee; padding:6px 8px; text-align:left; font-size:9px; letter-spacing:0.5px; font-weight:700; }
+  td { padding:6px 8px; border-bottom:1px solid #e8e8e8; vertical-align:middle; }
+  tr:nth-child(even) td { background:#f8f9fa; }
+  .footer { margin-top:20px; font-size:9px; color:#999; text-align:center; border-top:1px solid #ddd; padding-top:6px; }
+  @media print { .no-print { display:none!important; } }
+</style></head><body>
+<div class="header">
+  <div>
+    <div class="logo">MAR<span>NIK</span>26</div>
+    <div class="subtitle">Motor Oil Refineries · Instruments Dept</div>
+  </div>
+  <div class="title">
+    ΕΚΤΕΛΕΣΤΙΚΗ ΑΝΑΦΟΡΑ<br>
+    <span style="color:#e8620c;font-size:11px">${new Date().toLocaleDateString('el-GR', { day:'2-digit', month:'long', year:'numeric' })}</span>
+  </div>
+</div>
+
+<div class="kpis">
+  <div class="kpi-box" style="border-top-color:#1a5fa8"><div class="kpi-val" style="color:#1a5fa8">${total}</div><div class="kpi-lbl">Σύνολο</div></div>
+  <div class="kpi-box" style="border-top-color:#c0251e"><div class="kpi-val" style="color:#c0251e">${overdue}</div><div class="kpi-lbl">Ληγμένοι</div></div>
+  <div class="kpi-box" style="border-top-color:#b06000"><div class="kpi-val" style="color:#b06000">${soon}</div><div class="kpi-lbl">≤30 Ημέρες</div></div>
+  <div class="kpi-box" style="border-top-color:#1e7a42"><div class="kpi-val" style="color:#1e7a42">${okCount}</div><div class="kpi-lbl">Εντός</div></div>
+  <div class="kpi-box" style="border-top-color:${compliance>=90?'#1e7a42':compliance>=60?'#b06000':'#c0251e'}">
+    <div class="kpi-val" style="color:${compliance>=90?'#1e7a42':compliance>=60?'#b06000':'#c0251e'}">${compliance}%</div>
+    <div class="kpi-lbl">Συμμόρφωση</div>
+  </div>
+</div>
+
+<div class="section-title">ΚΑΛΥΨΗ ΑΝΑ ΠΕΡΙΟΧΗ</div>
+<table>
+  <thead><tr><th>Περιοχή</th><th style="text-align:center;width:60px">Σύνολο</th><th style="width:200px">Πρόοδος</th><th style="text-align:center;width:60px">%</th></tr></thead>
+  <tbody>${areaRows}</tbody>
+</table>
+
+<div class="section-title" style="color:#c0251e">⚠ ΑΝΙΧΝΕΥΤΕΣ ΥΨΗΛΟΥ ΡΙΣΚΟΥ (TOP 10)</div>
+<table>
+  <thead><tr><th style="width:24px">#</th><th>TAG</th><th>Θέση</th><th style="text-align:center;width:80px">Εκπρόθεσμος</th><th style="text-align:center;width:80px">Επεμβάσεις</th></tr></thead>
+  <tbody>${riskRows}</tbody>
+</table>
+
+<div class="footer">Motor Oil Refineries · Instruments Dept · MARNIK26 · Αναφορά παρήχθη αυτόματα</div>
+<div class="no-print" style="text-align:center;margin-top:16px">
+  <button onclick="window.print()" style="background:#1a5fa8;color:#fff;border:none;padding:10px 28px;font-size:13px;font-weight:700;border-radius:6px;cursor:pointer;margin-right:8px">🖨 ΕΚΤΥΠΩΣΗ</button>
+  <button onclick="window.close()" style="background:#555;color:#fff;border:none;padding:10px 18px;font-size:13px;border-radius:6px;cursor:pointer">✕ Κλείσιμο</button>
+</div>
+</body></html>`;
+
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const win  = window.open(url, '_blank');
+  if (!win) showToast('Επίτρεψε τα pop-ups', 'error');
+  else setTimeout(() => URL.revokeObjectURL(url), 3000);
 }
 
 // ── Chart.js: φορτώνεται δυναμικά (ίδιο pattern με loadSheetJS) ──
@@ -4447,12 +4621,12 @@ function renderStatsCharts() {
       },
     });
 
-    // ── Κατανομή ανά τύπο ανιχνευτή ──
-    // Κανονικοποίηση (trim + uppercase) ώστε π.χ. "Fire" και "FIRE " να
-    // μετρηθούν μαζί αντί να σκορπίζονται σε ξεχωριστές, αόρατες κατηγορίες.
+    // ── Κατανομή ανά κατηγορία ανιχνευτή (π.χ. ΤΟΞΙΚΑ ΑΕΡΙΑ, ΕΥΦΛΕΚΤΑ ΑΕΡΙΑ) ──
+    // Κανονικοποίηση (trim + uppercase) ώστε π.χ. "Τοξικά αέρια" και
+    // "ΤΟΞΙΚΑ ΑΕΡΙΑ " να μετρηθούν μαζί αντί να σκορπίζονται.
     const typeCounts = {};
     DETECTORS.forEach(d => {
-      const ty = String(d.type || '').trim().toUpperCase() || 'ΑΓΝΩΣΤΟ';
+      const ty = String(d.category || '').trim().toUpperCase() || 'ΑΓΝΩΣΤΟ';
       typeCounts[ty] = (typeCounts[ty]||0) + 1;
     });
     // Φθίνουσα σειρά — έτσι φαίνονται πρώτα οι μεγάλες κατηγορίες, αλλά ΟΛΕΣ
@@ -4989,7 +5163,7 @@ function showNewDetectorModal() {
       <label class="field-label">ΠΕΡΙΟΧΗ</label>
       <div style="display:flex;gap:6px;margin-bottom:10px">
         <select class="field-input" id="nd-area" style="margin:0;flex:1">
-          ${DET_AREAS.map(a=>`<option value="${a}">${a}</option>`).join('')}
+          ${getAllAreaOptions().map(a=>`<option value="${a}">${a}</option>`).join('')}
         </select>
         <button onclick="addListItem('area')" style="background:var(--accent);border:none;border-radius:var(--radius);color:#fff;padding:0 10px;cursor:pointer;font-size:16px;flex-shrink:0">+</button>
       </div>
@@ -6928,7 +7102,7 @@ function showAddNpItemModal(presetProject, editId) {
 
       <label class="field-label">ΠΕΡΙΟΧΗ</label>
       <select class="field-input" id="np-area" style="margin-bottom:10px">
-        ${DET_AREAS.map(a=>`<option value="${a}" ${isEdit && editItem.area===a ? 'selected' : ''}>${a}</option>`).join('')}
+        ${getAllAreaOptions().map(a=>`<option value="${a}" ${isEdit && editItem.area===a ? 'selected' : ''}>${a}</option>`).join('')}
       </select>
 
       <label class="field-label">ΚΑΤΗΓΟΡΙΑ</label>
