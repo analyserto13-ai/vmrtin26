@@ -4381,6 +4381,11 @@ function renderStats(mc) {
       <div class="card-title">🔧 ΚΑΤΑΝΟΜΗ ΑΝΑ ΤΥΠΟ ΑΝΙΧΝΕΥΤΗ</div>
       <div style="position:relative;height:240px"><canvas id="chart-type-dist"></canvas></div>
     </div>
+
+    <div class="card">
+      <div class="card-title">🔩 ΣΥΧΝΟΤΕΡΕΣ ΑΛΛΑΓΕΣ ΑΙΣΘΗΤΗΡΑ (TOP 15)</div>
+      <div style="position:relative;height:240px"><canvas id="chart-sensor-changes"></canvas></div>
+    </div>
   `;
   renderStatsCharts();
 }
@@ -4398,12 +4403,13 @@ function loadChartJS(cb) {
 
 // Κρατάμε αναφορές στα ενεργά charts ώστε να τα καταστρέφουμε πριν από κάθε
 // re-render — αλλιώς το Chart.js πετάει "Canvas is already in use".
-let _chartMonthly = null, _chartTypeDist = null;
+let _chartMonthly = null, _chartTypeDist = null, _chartSensorChanges = null;
 function renderStatsCharts() {
   loadChartJS(() => {
     const elMonthly = document.getElementById('chart-monthly-trend');
     const elType     = document.getElementById('chart-type-dist');
-    if (!elMonthly || !elType) return; // ο χρήστης έφυγε από τη σελίδα πριν φορτώσει η βιβλιοθήκη
+    const elSensor   = document.getElementById('chart-sensor-changes');
+    if (!elMonthly || !elType || !elSensor) return; // ο χρήστης έφυγε από τη σελίδα πριν φορτώσει η βιβλιοθήκη
 
     // ── Τάση ανά μήνα: πλήθος εγγραφών βαθμονόμησης τους τελευταίους 12 μήνες ──
     const monthLabels = [];
@@ -4476,6 +4482,43 @@ function renderStatsCharts() {
         scales: { x: { beginAtZero: true, ticks: { precision: 0 } } },
       },
     });
+
+    // ── Συχνότερες αλλαγές αισθητήρα ανά ανιχνευτή (top 15) ──
+    const sensorChangeCounts = {};
+    DETECTORS.forEach(d => {
+      let count = 0;
+      d.entries.forEach(e => {
+        const tasks = String(e.task || '').split('|').map(s => s.trim());
+        if (tasks.some(t => t.includes('Αλλαγή αισθητήρα'))) count++;
+      });
+      if (count > 0) sensorChangeCounts[d.tag] = count;
+    });
+    const sensorTop = Object.entries(sensorChangeCounts).sort((a,b) => b[1]-a[1]).slice(0, 15);
+
+    elSensor.parentElement.style.height = Math.max(240, sensorTop.length * 28) + 'px';
+
+    if (_chartSensorChanges) _chartSensorChanges.destroy();
+    if (sensorTop.length === 0) {
+      // Δεν υπάρχει καμία καταχωρημένη αλλαγή αισθητήρα ακόμα.
+      elSensor.parentElement.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-family:var(--cond);font-size:13px">Καμία καταχωρημένη αλλαγή αισθητήρα ακόμα</div>';
+    } else {
+      _chartSensorChanges = new Chart(elSensor, {
+        type: 'bar',
+        data: {
+          labels: sensorTop.map(e => e[0]),
+          datasets: [{
+            data: sensorTop.map(e => e[1]),
+            backgroundColor: '#c0251e',
+          }],
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { x: { beginAtZero: true, ticks: { precision: 0, stepSize: 1 } } },
+        },
+      });
+    }
   });
 }
 
