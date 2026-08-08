@@ -1418,6 +1418,10 @@ body {
       <span>Έργα</span>
       <span class="nav-badge" id="nav-np-badge" style="display:none">0</span>
     </button>
+    <button class="nav-item" onclick="showPage('firesystems')" id="nav-firesystems">
+      <span class="nav-icon">🏢</span>
+      <span>Κτήρια</span>
+    </button>
   </nav>
 </div>
 
@@ -1691,6 +1695,24 @@ function saveDeletedLinkIds() {
   localStorage.setItem('marnik26_deleted_link_ids', JSON.stringify(DELETED_LINK_IDS));
 }
 
+// FIRE_SYSTEMS: { id, name, building, pdfUrl, pdfName, notes }
+// ΣΗΜΑΝΤΙΚΟ: ΔΕΝ φορτώνεται στο γενικό syncFromSheets() — μόνο όταν ανοίγει
+// κανείς αυτή τη σελίδα (fireSystemsLoaded flag), ώστε να μην προσθέτει
+// καθόλου βάρος στο κύριο sync/login.
+let FIRE_SYSTEMS = JSON.parse(localStorage.getItem('marnik26_fire_systems') || '[]');
+let fireSystemsLoaded = false;
+function saveFireSystems() {
+  localStorage.setItem('marnik26_fire_systems', JSON.stringify(FIRE_SYSTEMS));
+}
+
+// FIRE_SYSTEM_ENTRIES: { id, systemId, date, task, tech, notes } — πλήρες
+// ιστορικό ανά σύστημα (Αλλαγή μπαταρίας, Βλάβη, Αλλαγή ανιχνευτή, κλπ.)
+let FIRE_SYSTEM_ENTRIES = JSON.parse(localStorage.getItem('marnik26_fire_system_entries') || '[]');
+function saveFireSystemEntries() {
+  localStorage.setItem('marnik26_fire_system_entries', JSON.stringify(FIRE_SYSTEM_ENTRIES));
+}
+const FS_TASK_OPTIONS = ['Συντήρηση', 'Αλλαγή μπαταρίας', 'Βλάβη', 'Αλλαγή ανιχνευτή', 'Άλλο'];
+
 // LINK_ATTACHMENTS: { id, entityType:'DETECTOR'|'NPITEM', entityKey, linkId, created }
 // entityKey = tag (DETECTOR) ή NEWPROJECT_ITEMS.id (NPITEM). Many-to-many σύνδεση.
 let LINK_ATTACHMENTS = JSON.parse(localStorage.getItem('marnik26_link_attachments') || '[]');
@@ -1719,7 +1741,7 @@ function saveDeletedNpNoteIds() {
 async function gsSaveCylinder(cyl) {
   if (!gsConnected) { queueAction('saveCylinder', cyl); showToast('⚠ Φιάλη αποθηκεύτηκε τοπικά — θα σταλεί αυτόματα στο Sheet', 'error'); return false; }
   try {
-    await gsPost({ action: 'saveCylinder', data: cyl });
+    await gsPost({ action: 'saveCylinder', data: { ...cyl, auth: authPayload() } });
     return true;
   } catch(err) {
     console.error('gsSaveCylinder error:', err);
@@ -1733,7 +1755,7 @@ async function gsSaveCylinder(cyl) {
 async function gsDeleteCylinder(id) {
   if (!gsConnected) { queueAction('deleteCylinder', { id }); return false; }
   try {
-    await gsPost({ action: 'deleteCylinder', data: { id } });
+    await gsPost({ action: 'deleteCylinder', data: { id, auth: authPayload() } });
     return true;
   } catch(err) {
     console.error('gsDeleteCylinder error:', err);
@@ -1742,11 +1764,96 @@ async function gsDeleteCylinder(id) {
   }
 }
 
+// ── FIRE_SYSTEMS (πυρανίχνευση κτηρίων) ──
+// gsSaveFireSystem: ΠΟΤΕ δεν μπαίνει σε ουρά όταν περιλαμβάνει PDF (pdfBase64)
+// — τα PDF μπορεί να είναι μεγάλα και δεν έχει νόημα να κάθονται στο
+// localStorage περιμένοντας σύνδεση. Χωρίς PDF (απλή επεξεργασία ονόματος/
+// κτηρίου) μπαίνει κανονικά σε ουρά σαν όλα τα άλλα.
+async function gsSaveFireSystem(sys) {
+  if (!gsConnected) {
+    if (sys.pdfBase64) { showToast('⚠ Χρειάζεται σύνδεση για ανέβασμα PDF', 'error'); return null; }
+    queueAction('saveFireSystem', sys);
+    return { ok: true, id: sys.id };
+  }
+  try {
+    const res = await gsPost({ action: 'saveFireSystem', data: { ...sys, auth: authPayload() } });
+    return res;
+  } catch(err) {
+    console.error('gsSaveFireSystem error:', err);
+    if (sys.pdfBase64) { showToast('⚠ Το PDF δεν ανέβηκε — ξαναδοκίμασε', 'error'); return null; }
+    queueAction('saveFireSystem', sys);
+    showToast('⚠ Αποθηκεύτηκε τοπικά — θα σταλεί αυτόματα στο Sheet', 'error');
+    return { ok: true, id: sys.id };
+  }
+}
+async function gsAddFireSystemEntry(data) {
+  if (!gsConnected) { queueAction('addFireSystemEntry', data); return false; }
+  try {
+    await gsPost({ action: 'addFireSystemEntry', data: { ...data, auth: authPayload() } });
+    return true;
+  } catch(err) {
+    console.error('gsAddFireSystemEntry error:', err);
+    queueAction('addFireSystemEntry', data);
+    showToast('⚠ Καταγράφηκε τοπικά — θα σταλεί αυτόματα στο Sheet', 'error');
+    return false;
+  }
+}
+async function gsDeleteFireSystemEntry(id) {
+  if (!gsConnected) { queueAction('deleteFireSystemEntry', { id }); return false; }
+  try {
+    await gsPost({ action: 'deleteFireSystemEntry', data: { id, auth: authPayload() } });
+    return true;
+  } catch(err) {
+    console.error('gsDeleteFireSystemEntry error:', err);
+    queueAction('deleteFireSystemEntry', { id });
+    return false;
+  }
+}
+async function gsDeleteFireSystem(id) {
+  if (!gsConnected) { queueAction('deleteFireSystem', { id }); return false; }
+  try {
+    await gsPost({ action: 'deleteFireSystem', data: { id, auth: authPayload() } });
+    return true;
+  } catch(err) {
+    console.error('gsDeleteFireSystem error:', err);
+    queueAction('deleteFireSystem', { id });
+    return false;
+  }
+}
+async function loadFireSystems(force) {
+  if (fireSystemsLoaded && !force) return;
+  if (!gsConnected) return;
+  try {
+    // ΤΑΧΥΤΗΤΑ: συστήματα + ιστορικό φεύγουν παράλληλα, όχι το ένα μετά το άλλο.
+    const [sysRes, entRes] = await Promise.all([
+      gsGet({ action: 'getFireSystems' }),
+      gsGet({ action: 'getFireSystemEntries' }),
+    ]);
+    if (sysRes && sysRes.systems) {
+      // Κράτα τοπικά συστήματα που δεν έχουν φτάσει ακόμα στο Sheet (π.χ.
+      // δημιουργήθηκαν offline και περιμένουν στην ουρά) — μην τα σβήσεις.
+      const sheetIds = new Set(sysRes.systems.map(s => s.id));
+      const localOnly = FIRE_SYSTEMS.filter(s => !sheetIds.has(s.id));
+      FIRE_SYSTEMS = [...sysRes.systems, ...localOnly];
+      saveFireSystems();
+    }
+    if (entRes && entRes.entries) {
+      const sheetEntIds = new Set(entRes.entries.map(e => e.id));
+      const localOnlyEnt = FIRE_SYSTEM_ENTRIES.filter(e => !sheetEntIds.has(e.id));
+      FIRE_SYSTEM_ENTRIES = [...entRes.entries, ...localOnlyEnt];
+      saveFireSystemEntries();
+    }
+    fireSystemsLoaded = true;
+  } catch(err) {
+    console.error('loadFireSystems error:', err);
+  }
+}
+
 // ── ΝΕΟ ΕΡΓΟ: push/delete/promote στο Sheet ──
 async function gsSaveNewProjectItem(item) {
   if (!gsConnected) { queueAction('addNewProjectItem', item); return false; }
   try {
-    await gsPost({ action: 'addNewProjectItem', data: item });
+    await gsPost({ action: 'addNewProjectItem', data: { ...item, auth: authPayload() } });
     return true;
   } catch(err) {
     console.error('gsSaveNewProjectItem error:', err);
@@ -1759,7 +1866,7 @@ async function gsSaveNewProjectItem(item) {
 async function gsUpdateNewProjectItem(item) {
   if (!gsConnected) { queueAction('updateNewProjectItem', item); return false; }
   try {
-    await gsPost({ action: 'updateNewProjectItem', data: item });
+    await gsPost({ action: 'updateNewProjectItem', data: { ...item, auth: authPayload() } });
     return true;
   } catch(err) {
     console.error('gsUpdateNewProjectItem error:', err);
@@ -1772,7 +1879,7 @@ async function gsUpdateNewProjectItem(item) {
 async function gsDeleteNewProjectItem(id) {
   if (!gsConnected) { queueAction('deleteNewProjectItem', { id }); return false; }
   try {
-    await gsPost({ action: 'deleteNewProjectItem', data: { id } });
+    await gsPost({ action: 'deleteNewProjectItem', data: { id, auth: authPayload() } });
     return true;
   } catch(err) {
     console.error('gsDeleteNewProjectItem error:', err);
@@ -1785,7 +1892,7 @@ async function gsDeleteNewProjectItem(id) {
 async function gsPromoteNewProjectItem(item) {
   if (!gsConnected) { queueAction('promoteNewProjectItem', item); return false; }
   try {
-    await gsPost({ action: 'promoteNewProjectItem', data: item });
+    await gsPost({ action: 'promoteNewProjectItem', data: { ...item, auth: authPayload() } });
     return true;
   } catch(err) {
     console.error('gsPromoteNewProjectItem error:', err);
@@ -1798,41 +1905,41 @@ async function gsPromoteNewProjectItem(item) {
 // ── LINKS (κοινή δεξαμενή URLs) ──
 async function gsSaveLink(link) {
   if (!gsConnected) { queueAction('saveLink', link); return false; }
-  try { await gsPost({ action: 'saveLink', data: link }); return true; }
+  try { await gsPost({ action: 'saveLink', data: { ...link, auth: authPayload() } }); return true; }
   catch(err) { console.error('gsSaveLink error:', err); queueAction('saveLink', link); showToast('⚠ Link τοπικά — θα σταλεί αυτόματα στο Sheet', 'error'); return false; }
 }
 async function gsDeleteLink(id) {
   if (!gsConnected) { queueAction('deleteLink', { id }); return false; }
-  try { await gsPost({ action: 'deleteLink', data: { id } }); return true; }
+  try { await gsPost({ action: 'deleteLink', data: { id, auth: authPayload() } }); return true; }
   catch(err) { console.error('gsDeleteLink error:', err); queueAction('deleteLink', { id }); showToast('⚠ Διαγραφή link τοπική — θα σταλεί αυτόματα στο Sheet', 'error'); return false; }
 }
 
 // ── LINK_ATTACHMENTS (σύνδεση tag/np-item ↔ link) ──
 async function gsSaveLinkAttachment(att) {
   if (!gsConnected) { queueAction('saveLinkAttachment', att); return false; }
-  try { await gsPost({ action: 'saveLinkAttachment', data: att }); return true; }
+  try { await gsPost({ action: 'saveLinkAttachment', data: { ...att, auth: authPayload() } }); return true; }
   catch(err) { console.error('gsSaveLinkAttachment error:', err); queueAction('saveLinkAttachment', att); showToast('⚠ Σύνδεση link τοπική — θα σταλεί αυτόματα στο Sheet', 'error'); return false; }
 }
 async function gsDeleteLinkAttachment(id) {
   if (!gsConnected) { queueAction('deleteLinkAttachment', { id }); return false; }
-  try { await gsPost({ action: 'deleteLinkAttachment', data: { id } }); return true; }
+  try { await gsPost({ action: 'deleteLinkAttachment', data: { id, auth: authPayload() } }); return true; }
   catch(err) { console.error('gsDeleteLinkAttachment error:', err); queueAction('deleteLinkAttachment', { id }); return false; }
 }
 
 // ── NP_NOTES (σημειώσεις εγκατάστασης ΝΕΟΥ ΕΡΓΟΥ) ──
 async function gsAddNpNote(note) {
   if (!gsConnected) { queueAction('addNpNote', note); return false; }
-  try { await gsPost({ action: 'addNpNote', data: note }); return true; }
+  try { await gsPost({ action: 'addNpNote', data: { ...note, auth: authPayload() } }); return true; }
   catch(err) { console.error('gsAddNpNote error:', err); queueAction('addNpNote', note); showToast('⚠ Σημείωση τοπική — θα σταλεί αυτόματα στο Sheet', 'error'); return false; }
 }
 async function gsUpdateNpNote(note) {
   if (!gsConnected) { queueAction('updateNpNote', note); return false; }
-  try { await gsPost({ action: 'updateNpNote', data: note }); return true; }
+  try { await gsPost({ action: 'updateNpNote', data: { ...note, auth: authPayload() } }); return true; }
   catch(err) { console.error('gsUpdateNpNote error:', err); queueAction('updateNpNote', note); return false; }
 }
 async function gsDeleteNpNote(id) {
   if (!gsConnected) { queueAction('deleteNpNote', { id }); return false; }
-  try { await gsPost({ action: 'deleteNpNote', data: { id } }); return true; }
+  try { await gsPost({ action: 'deleteNpNote', data: { id, auth: authPayload() } }); return true; }
   catch(err) { console.error('gsDeleteNpNote error:', err); queueAction('deleteNpNote', { id }); return false; }
 }
 
@@ -1906,11 +2013,12 @@ const TASK_OPTIONS = ['Βαθμονόμηση','Αλλαγή αισθητήρα'
 const GS_URL = 'https://script.google.com/macros/s/AKfycbz2DBRAg6UHAEm1TTsd034HH4WG-jJZvJI_vXeIgd2J8zV1TJdJ2T9hV4nr4N5D_C29cQ/exec';
 let gsConnected = false;
 let gsSyncing   = false;
+let gsCallbackCounter = 0; // εξασφαλίζει μοναδικό callback name ακόμα κι αν πολλά gsGet() φύγουν στο ίδιο χιλιοστό δευτερολέπτου (π.χ. Promise.all παράλληλα requests)
 
 async function gsGet(params) {
   // JSONP — μόνος τρόπος για Apps Script από GitHub Pages
   return new Promise((resolve, reject) => {
-    const cbName = 'gs_cb_' + Date.now();
+    const cbName = 'gs_cb_' + Date.now() + '_' + (gsCallbackCounter++);
     const url = GS_URL + '?' + new URLSearchParams({...params, callback: cbName});
     const script = document.createElement('script');
     const timer = setTimeout(() => {
@@ -1936,13 +2044,24 @@ async function gsGet(params) {
 }
 
 async function gsPost(data) {
-  const res = await fetch(GS_URL, {
-    method: 'POST',
-    redirect: 'follow',
-    mode: 'cors',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(data),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20000); // 20s — πριν δεν υπήρχε ΚΑΝΕΝΑ timeout εδώ
+  let res;
+  try {
+    res = await fetch(GS_URL, {
+      method: 'POST',
+      redirect: 'follow',
+      mode: 'cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(data),
+      signal: controller.signal,
+    });
+  } catch(err) {
+    if (err.name === 'AbortError') throw new Error('Timeout');
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
   if (!res.ok) throw new Error('HTTP ' + res.status);
   const json = await res.json();
   // ΚΡΙΣΙΜΟ: το Apps Script απαντάει με HTTP 200 ΚΑΙ όταν αποτυγχάνει εσωτερικά
@@ -1996,11 +2115,29 @@ async function syncFromSheets() {
   showSyncStatus('⟳ Συγχρονισμός...');
 
   try {
-    // Πρώτα ξαναστέλνουμε ό,τι έμεινε pending από προηγούμενο offline διάστημα
-    await flushPendingChanges();
+    // Πρώτα ξαναστέλνουμε ό,τι έμεινε pending από προηγούμενο offline διάστημα.
+    // ΣΗΜΑΝΤΙΚΟ: με χρονικό όριο — αν η ουρά έχει πολλά/αργά/κολλημένα items,
+    // ΔΕΝ πρέπει να καθυστερεί επ' άπειρον τη φόρτωση των πραγματικών
+    // δεδομένων. Ό,τι δεν πρόλαβε θα ξαναδοκιμαστεί στον επόμενο κύκλο.
+    await Promise.race([
+      flushPendingChanges(),
+      new Promise(resolve => setTimeout(resolve, 15000)),
+    ]);
+
+    // ΤΑΧΥΤΗΤΑ: όλα τα ανεξάρτητα reads φεύγουν ΠΑΡΑΛΛΗΛΑ αντί το ένα μετά το
+    // άλλο — πριν αυτό ήταν 7 διαδοχικά requests (άθροισμα των χρόνων τους),
+    // τώρα είναι όσο το πιο αργό από τα 7. Μεγάλη διαφορά στην ταχύτητα sync.
+    const [detRes, entRes, cylRes, npRes, linksRes, attRes, notesRes] = await Promise.all([
+      gsGet({ action: 'getDetectors' }),
+      gsGet({ action: 'getAllEntries' }),
+      gsGet({ action: 'getCylinders' }),
+      gsGet({ action: 'getNewProjectItems' }),
+      gsGet({ action: 'getLinks' }),
+      gsGet({ action: 'getLinkAttachments' }),
+      gsGet({ action: 'getNpNotes' }),
+    ]);
 
     // Load detectors
-    const detRes = await gsGet({ action: 'getDetectors' });
     if (detRes.detectors && detRes.detectors.length > 0) {
       const sheetDetTags = new Set(detRes.detectors.map(r => r.tag));
       // Merge with local — remote wins for metadata
@@ -2042,7 +2179,6 @@ async function syncFromSheets() {
     }
 
     // Load all entries
-    const entRes = await gsGet({ action: 'getAllEntries' });
     if (entRes.entries && entRes.entries.length > 0) {
       // Clear demo entries and replace with real data
       DETECTORS.forEach(d => d.entries = []);
@@ -2088,7 +2224,6 @@ async function syncFromSheets() {
     // φορτώνεται on-demand μέσα στο Admin panel (βλ. renderAdmin/loadUsersForAdmin).
 
     // Load cylinders — merge: Sheet κερδίζει για υπάρχοντα, τοπικά unsent προστίθενται
-    const cylRes = await gsGet({ action: 'getCylinders' });
     if (cylRes.cylinders) {
       if (cylRes.cylinders.length > 0) {
         // String coercion παντού για να αποφύγουμε number vs string mismatch
@@ -2125,7 +2260,6 @@ async function syncFromSheets() {
     }
 
     // ── ΝΕΟ ΕΡΓΟ: ίδιο tombstone-aware sync με τις φιάλες ──
-    const npRes = await gsGet({ action: 'getNewProjectItems' });
     if (npRes.items) {
       if (npRes.items.length > 0) {
         const npSheetIds = new Set(npRes.items.map(it => String(it.id)));
@@ -2155,7 +2289,6 @@ async function syncFromSheets() {
     }
 
     // ── LINKS: ίδιο tombstone-aware sync ──
-    const linksRes = await gsGet({ action: 'getLinks' });
     if (linksRes.links) {
       if (linksRes.links.length > 0) {
         const linkSheetIds = new Set(linksRes.links.map(l => String(l.id)));
@@ -2185,7 +2318,6 @@ async function syncFromSheets() {
     }
 
     // ── LINK_ATTACHMENTS: ίδιο tombstone-aware sync ──
-    const attRes = await gsGet({ action: 'getLinkAttachments' });
     if (attRes.attachments) {
       if (attRes.attachments.length > 0) {
         const attSheetIds = new Set(attRes.attachments.map(a => String(a.id)));
@@ -2215,7 +2347,6 @@ async function syncFromSheets() {
     }
 
     // ── NP_NOTES: ίδιο tombstone-aware sync ──
-    const notesRes = await gsGet({ action: 'getNpNotes' });
     if (notesRes.notes) {
       if (notesRes.notes.length > 0) {
         const noteSheetIds = new Set(notesRes.notes.map(n => String(n.id)));
@@ -3132,8 +3263,9 @@ function loginSuccess(u, user) {
   // Log ΜΕΤΑ από setupUser ώστε currentUser να είναι έτοιμο
   setTimeout(() => logActivity('LOGIN', `Είσοδος χρήστη "${currentUser.name||currentUser.username}" (${currentUser.role})`), 500);
 
-  // Έλεγξε αν υπάρχει ?tag= στο URL
+  // Έλεγξε αν υπάρχει ?tag= ή ?firesys= στο URL
   const urlTag = new URLSearchParams(window.location.search).get('tag');
+  const urlFireSys = new URLSearchParams(window.location.search).get('firesys');
   if (urlTag) {
     syncFromSheets().then(() => {
       const det = DETECTORS.find(d => d.tag === urlTag.toUpperCase());
@@ -3144,6 +3276,15 @@ function loginSuccess(u, user) {
         showToast(`Δεν βρέθηκε ανιχνευτής: ${urlTag}`, 'error');
         showPage('dashboard');
       }
+    });
+  } else if (urlFireSys) {
+    syncFromSheets().then(() => {
+      loadFireSystems(true).then(() => {
+        const sys = FIRE_SYSTEMS.find(s => s.id === urlFireSys);
+        fsDetailId = sys ? urlFireSys : null;
+        if (!sys) showToast('Δεν βρέθηκε το σύστημα', 'error');
+        showPage('firesystems');
+      });
     });
   } else {
     showPage('dashboard');
@@ -3311,6 +3452,7 @@ function showPage(page) {
   else if (page === 'schedule') renderSchedule(mc);
   else if (page === 'cylinders') renderCylinders(mc);
   else if (page === 'newproject') { currentNpProject = null; renderNewProject(mc); }
+  else if (page === 'firesystems') { renderFireSystemsPlaceholder(mc); loadFireSystems().then(() => { if (currentPage === 'firesystems') renderFireSystems(mc); }); }
 
   updateNpBadge();
 
@@ -3621,6 +3763,7 @@ function getPageBackLabel(page) {
     case 'schedule':   return 'ΠΡΟΓΡΑΜΜΑ';
     case 'cylinders':  return 'ΦΙΑΛΕΣ';
     case 'newproject': return 'ΝΕΟ ΕΡΓΟ';
+    case 'firesystems': return 'ΠΥΡΑΝΙΧΝΕΥΣΗ ΚΤΗΡΙΩΝ';
     case 'stats':      return t('stats-title');
     case 'admin':      return t('admin-title');
     default:           return t('det-title');
@@ -3847,6 +3990,7 @@ function showEditEntryModal(tag, idx) {
 // originalDate/originalTech ταξιδεύουν στο backend ώστε το Code.gs να βρει
 // τη σωστή γραμμή στο Sheet (key = tag+date+tech — ίδια λογική με το dedup του import).
 function saveEditedEntry(tag, idx) {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα', 'error'); return; }
   const det = DETECTORS.find(d => d.tag === tag);
   if (!det || !det.entries[idx]) return;
   const orig = { ...det.entries[idx] };
@@ -3892,6 +4036,7 @@ function deleteHistoryEntry(tag, idx) {
 }
 
 function setDetInterval(tag, val) {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα', 'error'); return; }
   const det = DETECTORS.find(d => d.tag === tag);
   if (det) {
     det.calInterval = parseInt(val);
@@ -3901,6 +4046,7 @@ function setDetInterval(tag, val) {
 }
 
 function setDetNextDate(tag, val) {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα', 'error'); return; }
   const det = DETECTORS.find(d => d.tag === tag);
   if (det) {
     det.nextCalDate = val;
@@ -3928,6 +4074,7 @@ function toggleAreaPicker(tag, spanEl) {
 }
 
 function setDetArea(tag, val) {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα', 'error'); return; }
   const det = DETECTORS.find(d => d.tag === tag);
   if (!det || det.area === val) return;
   det.area = val;
@@ -3954,6 +4101,7 @@ function toggleTypePicker(tag, spanEl) {
 }
 
 function setDetType(tag, val) {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα', 'error'); return; }
   const det = DETECTORS.find(d => d.tag === tag);
   if (!det || det.type === val) return;
   det.type = val;
@@ -3980,6 +4128,7 @@ function toggleCategoryPicker(tag, spanEl) {
 }
 
 function setDetCategory(tag, val) {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα', 'error'); return; }
   const det = DETECTORS.find(d => d.tag === tag);
   if (!det || det.category === val) return;
   det.category = val;
@@ -4005,6 +4154,7 @@ function cancelEditLocation(tag) {
 }
 
 function saveLocation(tag) {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα', 'error'); return; }
   const det = DETECTORS.find(d => d.tag === tag);
   if (!det) return;
   const val = document.getElementById('loc-input-' + tag).value.trim();
@@ -4025,6 +4175,7 @@ function cancelEditMfr(tag) {
   document.getElementById('mfr-display-' + tag).style.display = 'flex';
 }
 function saveMfr(tag) {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα', 'error'); return; }
   const det = DETECTORS.find(d => d.tag === tag);
   if (!det) return;
   const val = document.getElementById('mfr-input-' + tag).value.trim();
@@ -4046,6 +4197,7 @@ function cancelEditModel(tag) {
   document.getElementById('model-display-' + tag).style.display = 'flex';
 }
 function saveModel(tag) {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα', 'error'); return; }
   const det = DETECTORS.find(d => d.tag === tag);
   if (!det) return;
   const val = document.getElementById('model-input-' + tag).value.trim();
@@ -4070,6 +4222,7 @@ function cancelEditTag(tag) {
 }
 
 function saveTagRename(oldTag) {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα', 'error'); return; }
   const newTag = document.getElementById('tag-input-' + oldTag).value.trim().toUpperCase();
   if (!newTag) { showToast('Το tag δεν μπορεί να είναι άδειο', 'error'); return; }
   if (newTag === oldTag) { cancelEditTag(oldTag); return; }
@@ -4090,6 +4243,7 @@ function saveTagRename(oldTag) {
 
 // ── Ολοκληρωτική διαγραφή ανιχνευτή + ιστορικού (admin only) ──
 async function deleteDetectorCompletely(tag) {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα', 'error'); return; }
   const det = DETECTORS.find(d => d.tag === tag);
   if (!det) return;
   const entCount = det.entries.length;
@@ -4278,6 +4432,7 @@ function toggleTask(opt) {
 }
 
 function submitEntry() {
+  if (!ROLES[currentUser.role].canAdd) { showToast('Δεν έχεις δικαίωμα', 'error'); return; }
   const tag = document.getElementById('add-tag').value.trim();
   const date = document.getElementById('add-date__hidden').value;
   const cyl = document.getElementById('add-cyl').value.trim();
@@ -5205,6 +5360,7 @@ function showNewDetectorModal() {
 }
 
 function submitNewDetector() {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα', 'error'); return; }
   const tag      = document.getElementById('nd-tag').value.trim().toUpperCase();
   const desc     = document.getElementById('nd-desc').value.trim();
   const loc      = document.getElementById('nd-loc').value.trim();
@@ -6000,7 +6156,7 @@ async function triggerManualBackup() {
   if (!gsConnected) { showToast('Δεν υπάρχει σύνδεση με Sheet', 'error'); return; }
   showToast('⏳ Backup σε εξέλιξη... (μπορεί να πάρει λίγα δευτερόλεπτα)');
   try {
-    const res = await gsPost({ action: 'manualBackup' });
+    const res = await gsPost({ action: 'manualBackup', data: { auth: authPayload() } });
     if (res && res.ok) {
       logActivity('BACKUP', `Manual backup στο MARNIK26_BACKUP Sheet`);
       showToast('✓ Backup αποθηκεύτηκε στο MARNIK26_BACKUP Sheet!');
@@ -6875,6 +7031,346 @@ function npProjectsList() {
 }
 function npEsc(s) {
   return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+// ══════════════════════════════════════════
+// FIRE_SYSTEMS — Πυρανίχνευση κτηρίων (ξεχωριστά από μεμονωμένους ανιχνευτές)
+// ══════════════════════════════════════════
+let fsDetailId = null; // id συστήματος που εμφανίζεται σε detail view, null = λίστα
+
+function fsEntriesFor(systemId) {
+  return FIRE_SYSTEM_ENTRIES.filter(e => e.systemId === systemId).sort((a,b) => b.date.localeCompare(a.date));
+}
+function fsLastActivity(systemId) {
+  const entries = fsEntriesFor(systemId);
+  return entries.length ? entries[0] : null;
+}
+
+function renderFireSystemsPlaceholder(mc) {
+  mc.innerHTML = `
+    <div class="page-header">
+      <div class="page-title">🏢 ΠΥΡΑΝΙΧΝΕΥΣΗ ΚΤΗΡΙΩΝ</div>
+      <div class="page-sub">Φόρτωση...</div>
+    </div>
+    <div class="empty-state" style="margin-top:60px"><div class="empty-icon">⏳</div></div>
+  `;
+}
+
+function renderFireSystems(mc) {
+  if (!gsConnected && !fireSystemsLoaded) {
+    mc.innerHTML = `
+      <div class="page-header"><div class="page-title">🏢 ΠΥΡΑΝΙΧΝΕΥΣΗ ΚΤΗΡΙΩΝ</div></div>
+      <div class="empty-state" style="margin-top:60px">
+        <div class="empty-icon">📡</div>
+        <div class="empty-text">Χρειάζεται σύνδεση για πρώτη φόρτωση</div>
+      </div>`;
+    return;
+  }
+  if (fsDetailId) { renderFireSystemDetail(mc); return; }
+
+  const canEdit = ROLES[currentUser.role].canAdmin;
+
+  mc.innerHTML = `
+    <div class="page-header">
+      <div class="page-title">🏢 ΠΥΡΑΝΙΧΝΕΥΣΗ ΚΤΗΡΙΩΝ</div>
+      <div class="page-sub">Συστήματα πυρανίχνευσης κτηρίων — ξεχωριστά από το κανονικό πρόγραμμα ανιχνευτών</div>
+    </div>
+
+    ${canEdit ? `
+    <button onclick="showFireSystemModal()"
+      style="width:100%;margin-bottom:14px;background:var(--cyan);border:none;border-radius:var(--radius);color:var(--on-accent);padding:12px;font-family:var(--cond);font-weight:700;font-size:14px;cursor:pointer">
+      + ΝΕΟ ΣΥΣΤΗΜΑ
+    </button>` : ''}
+
+    ${FIRE_SYSTEMS.length === 0 ? `
+      <div class="empty-state" style="margin-top:40px">
+        <div class="empty-icon">🏢</div>
+        <div class="empty-text">Δεν υπάρχουν καταχωρημένα συστήματα ακόμα</div>
+      </div>
+    ` : FIRE_SYSTEMS.slice().sort((a,b) => a.name.localeCompare(b.name,'el')).map(sys => {
+      const last = fsLastActivity(sys.id);
+      const days = last ? Math.floor((new Date() - new Date(last.date)) / 86400000) : null;
+      const statusColor = days === null ? 'var(--text3)' : days > 365 ? 'var(--red2)' : days > 180 ? 'var(--accent2)' : 'var(--green2)';
+      const statusText  = days === null ? 'Καμία καταχώρηση ακόμα' : `${last.task} · πριν ${days} μέρες`;
+      return `
+      <div class="card" style="cursor:pointer;border-left:3px solid ${statusColor}" onclick="openFireSystemDetail('${npEsc(sys.id)}')">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div>
+            <div style="font-family:var(--cond);font-weight:700;font-size:16px;color:var(--text)">${sys.name}</div>
+            <div style="font-size:12px;color:var(--text3)">${sys.building || '—'}</div>
+          </div>
+          ${sys.pdfUrl ? '<div style="font-size:18px">📄</div>' : ''}
+        </div>
+        <div style="margin-top:8px;font-size:12px;color:${statusColor};font-family:var(--cond);font-weight:600">
+          ● ${statusText}${last && last.tech ? ' · ' + last.tech : ''}
+        </div>
+      </div>`;
+    }).join('')}
+  `;
+}
+
+function openFireSystemDetail(id) {
+  fsDetailId = id;
+  renderFireSystems(document.getElementById('main-content'));
+}
+function closeFireSystemDetail() {
+  fsDetailId = null;
+  renderFireSystems(document.getElementById('main-content'));
+}
+
+function renderFireSystemDetail(mc) {
+  const sys = FIRE_SYSTEMS.find(s => s.id === fsDetailId);
+  if (!sys) { fsDetailId = null; renderFireSystems(mc); return; }
+  const canEdit = ROLES[currentUser.role].canAdmin;
+  const canLog  = ROLES[currentUser.role].canAdmin;
+  const entries = fsEntriesFor(sys.id);
+  const last = entries[0] || null;
+  const days = last ? Math.floor((new Date() - new Date(last.date)) / 86400000) : null;
+  const statusColor = days === null ? 'var(--text3)' : days > 365 ? 'var(--red2)' : days > 180 ? 'var(--accent2)' : 'var(--green2)';
+
+  const taskColors = {
+    'Συντήρηση':        'var(--green2)',
+    'Αλλαγή μπαταρίας': 'var(--accent2)',
+    'Βλάβη':             'var(--red2)',
+    'Αλλαγή ανιχνευτή':  'var(--blue2)',
+    'Άλλο':               'var(--text3)',
+  };
+
+  mc.innerHTML = `
+    <div style="margin-bottom:10px">
+      <button onclick="closeFireSystemDetail()" style="background:none;border:none;color:var(--accent2);font-family:var(--cond);font-size:14px;cursor:pointer;padding:6px 0">← Πίσω</button>
+    </div>
+
+    <div class="card">
+      <div style="font-family:var(--cond);font-weight:700;font-size:20px;color:var(--text)">${sys.name}</div>
+      <div style="font-size:13px;color:var(--text3);margin-top:2px">${sys.building || '—'}</div>
+
+      <div style="margin-top:14px;padding:12px;background:var(--bg3);border-radius:8px;border-left:3px solid ${statusColor}">
+        <div style="font-size:11px;color:var(--text3);font-family:var(--cond);font-weight:600">ΤΕΛΕΥΤΑΙΑ ΕΝΕΡΓΕΙΑ</div>
+        <div style="font-size:15px;color:${statusColor};font-weight:700;margin-top:2px">
+          ${last ? `${last.task} · ${formatDate(last.date)}` : 'Καμία ακόμα'}
+        </div>
+        ${last && last.tech ? `<div style="font-size:12px;color:var(--text3);margin-top:2px">από: ${last.tech}</div>` : ''}
+      </div>
+
+      ${sys.notes ? `<div style="margin-top:12px;font-size:13px;color:var(--text2);white-space:pre-wrap">${sys.notes}</div>` : ''}
+
+      <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+        ${sys.pdfUrl ? `<a href="${sys.pdfUrl}" target="_blank" style="flex:1;text-align:center;text-decoration:none;background:var(--blue);color:#fff;padding:10px;border-radius:var(--radius);font-family:var(--cond);font-weight:700;font-size:13px">📄 PDF ΠΕΡΙΓΡΑΦΗΣ</a>` : ''}
+        <button onclick="showFireSystemQR('${npEsc(sys.id)}','${npEsc(sys.name)}')" style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:10px;border-radius:var(--radius);font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer">▦ QR CODE</button>
+      </div>
+
+      ${canLog ? `<button onclick="showFireSystemEntryModal('${npEsc(sys.id)}')" style="width:100%;margin-top:10px;background:var(--green);border:none;color:#fff;padding:12px;border-radius:var(--radius);font-family:var(--cond);font-weight:700;font-size:14px;cursor:pointer">+ ΝΕΑ ΚΑΤΑΧΩΡΗΣΗ ΙΣΤΟΡΙΚΟΥ</button>` : ''}
+
+      ${canEdit ? `
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button onclick="showFireSystemModal('${npEsc(sys.id)}')" style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:10px;border-radius:var(--radius);font-family:var(--cond);font-size:13px;cursor:pointer">✏️ Επεξεργασία</button>
+        <button onclick="deleteFireSystemUI('${npEsc(sys.id)}')" style="flex:1;background:var(--bg3);border:1px solid var(--red2);color:var(--red2);padding:10px;border-radius:var(--radius);font-family:var(--cond);font-size:13px;cursor:pointer">🗑 Διαγραφή</button>
+      </div>` : ''}
+    </div>
+
+    <div class="card">
+      <div class="card-title">📋 ΙΣΤΟΡΙΚΟ (${entries.length})</div>
+      ${entries.length === 0 ? `
+        <div class="empty-state" style="margin-top:10px"><div class="empty-text">Καμία καταχώρηση ακόμα</div></div>
+      ` : entries.map(e => `
+        <div style="padding:10px 0;border-bottom:1px solid var(--border)">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+              <span style="display:inline-block;padding:2px 8px;border-radius:4px;background:${taskColors[e.task]||'var(--text3)'};color:#fff;font-size:11px;font-weight:700;font-family:var(--cond)">${e.task}</span>
+              <span style="font-size:12px;color:var(--text3);margin-left:6px">${formatDate(e.date)}</span>
+            </div>
+            ${canEdit ? `<button onclick="deleteFireSystemEntryUI('${npEsc(e.id)}')" style="background:none;border:none;color:var(--red2);cursor:pointer;font-size:14px">🗑</button>` : ''}
+          </div>
+          ${e.tech ? `<div style="font-size:12px;color:var(--text3);margin-top:4px">Τεχνίτης: ${e.tech}</div>` : ''}
+          ${e.notes ? `<div style="font-size:13px;color:var(--text2);margin-top:4px;white-space:pre-wrap">${e.notes}</div>` : ''}
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function showFireSystemEntryModal(systemId) {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα', 'error'); return; }
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay open';
+  overlay.id = 'fse-add-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box" style="max-width:400px">
+      <div style="font-family:var(--cond);font-weight:700;font-size:16px;margin-bottom:14px">Νέα Καταχώρηση Ιστορικού</div>
+
+      <label class="field-label">ΤΥΠΟΣ ΕΡΓΑΣΙΑΣ</label>
+      <select id="fse-task" class="field-input" style="margin-bottom:10px">
+        ${FS_TASK_OPTIONS.map(t => `<option value="${t}">${t}</option>`).join('')}
+      </select>
+
+      <label class="field-label">ΗΜΕΡΟΜΗΝΙΑ</label>
+      <div style="margin-bottom:10px">${dateMaskInputHTML('fse-date', new Date().toISOString().split('T')[0], "v => {}", 'width:100%;padding:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);font-size:14px;box-sizing:border-box')}</div>
+
+      <label class="field-label" style="margin-top:10px">ΤΕΧΝΙΤΗΣ</label>
+      <input type="text" id="fse-tech" class="field-input" value="${npEsc(currentUser.name || currentUser.username)}" style="margin-bottom:10px">
+
+      <label class="field-label">ΣΗΜΕΙΩΣΕΙΣ</label>
+      <textarea id="fse-notes" class="field-input" rows="3" placeholder="π.χ. λεπτομέρειες βλάβης, ποιος αισθητήρας άλλαξε..." style="margin-bottom:14px"></textarea>
+
+      <div style="display:flex;gap:8px">
+        <button onclick="this.closest('.modal-overlay').remove()" style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:12px;border-radius:var(--radius);cursor:pointer">Ακύρωση</button>
+        <button onclick="submitFireSystemEntry('${npEsc(systemId)}')" style="flex:1;background:var(--green);border:none;color:#fff;padding:12px;border-radius:var(--radius);font-weight:700;cursor:pointer">Καταχώρηση</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+}
+
+async function submitFireSystemEntry(systemId) {
+  const task  = document.getElementById('fse-task').value;
+  const date  = document.getElementById('fse-date__hidden').value;
+  const tech  = document.getElementById('fse-tech').value.trim();
+  const notes = document.getElementById('fse-notes').value.trim();
+  if (!date) { showToast('Συμπλήρωσε ημερομηνία', 'error'); return; }
+
+  const sys = FIRE_SYSTEMS.find(s => s.id === systemId);
+  const entry = { id: 'fse_local_' + Date.now(), systemId, date, task, tech, notes };
+  FIRE_SYSTEM_ENTRIES.push(entry);
+  saveFireSystemEntries();
+  logActivity('FIRE_SYSTEM_ENTRY', `${sys ? sys.name : systemId} · ${task}`);
+  document.getElementById('fse-add-overlay').remove();
+  showToast(`✓ Καταχωρήθηκε: ${task}`);
+  renderFireSystems(document.getElementById('main-content'));
+
+  await gsAddFireSystemEntry({ systemId, date, task, tech, notes });
+  if (gsConnected) { await loadFireSystems(true); if (currentPage === 'firesystems') renderFireSystems(document.getElementById('main-content')); }
+}
+
+function deleteFireSystemEntryUI(id) {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα', 'error'); return; }
+  if (!confirm('Διαγραφή αυτής της καταχώρησης ιστορικού;')) return;
+  FIRE_SYSTEM_ENTRIES = FIRE_SYSTEM_ENTRIES.filter(e => e.id !== id);
+  saveFireSystemEntries();
+  gsDeleteFireSystemEntry(id);
+  showToast('✓ Διαγράφηκε');
+  renderFireSystems(document.getElementById('main-content'));
+}
+
+function showFireSystemQR(id, name) {
+  const base = window.location.origin + window.location.pathname;
+  const url = base + '?firesys=' + encodeURIComponent(id);
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay open';
+  overlay.innerHTML = `
+    <div class="modal-box" style="max-width:320px;text-align:center">
+      <div style="font-family:var(--cond);font-weight:700;font-size:16px;margin-bottom:12px">${name}</div>
+      <div id="fs-qr-wrap" style="background:#fff;padding:12px;border-radius:8px;display:inline-block"></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:10px;word-break:break-all">${url}</div>
+      <button onclick="this.closest('.modal-overlay').remove()" style="width:100%;margin-top:14px;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:10px;border-radius:var(--radius);cursor:pointer">Κλείσιμο</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  new QRCode(document.getElementById('fs-qr-wrap'), { text: url, width: 200, height: 200, correctLevel: QRCode.CorrectLevel.M });
+}
+
+function showFireSystemModal(editId) {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα', 'error'); return; }
+  const sys = editId ? FIRE_SYSTEMS.find(s => s.id === editId) : null;
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay open';
+  overlay.id = 'fs-edit-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box" style="max-width:420px">
+      <div style="font-family:var(--cond);font-weight:700;font-size:16px;margin-bottom:14px">${sys ? 'Επεξεργασία Συστήματος' : 'Νέο Σύστημα'}</div>
+
+      <label class="field-label">ΟΝΟΜΑ ΣΥΣΤΗΜΑΤΟΣ</label>
+      <input type="text" id="fs-name" class="field-input" value="${sys ? npEsc(sys.name) : ''}" placeholder="π.χ. Πίνακας FC721 - Κτήριο Διοίκησης" style="margin-bottom:10px">
+
+      <label class="field-label">ΚΤΗΡΙΟ / ΤΟΠΟΘΕΣΙΑ</label>
+      <input type="text" id="fs-building" class="field-input" value="${sys ? npEsc(sys.building) : ''}" placeholder="π.χ. Κτήριο Διοίκησης" style="margin-bottom:10px">
+
+      <label class="field-label">ΣΗΜΕΙΩΣΕΙΣ</label>
+      <textarea id="fs-notes" class="field-input" rows="3" style="margin-bottom:10px">${sys ? npEsc(sys.notes) : ''}</textarea>
+
+      <label class="field-label">PDF ΠΕΡΙΓΡΑΦΗΣ ${sys && sys.pdfUrl ? '(υπάρχει ήδη — επίλεξε νέο για αντικατάσταση)' : ''}</label>
+      <input type="file" id="fs-pdf" accept="application/pdf" style="margin-bottom:14px;width:100%">
+      <div id="fs-error" style="color:var(--red2);font-size:12px;margin-bottom:10px;display:none"></div>
+
+      <div style="display:flex;gap:8px">
+        <button onclick="this.closest('.modal-overlay').remove()" style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:12px;border-radius:var(--radius);cursor:pointer">Ακύρωση</button>
+        <button id="fs-save-btn" onclick="submitFireSystem('${sys ? npEsc(sys.id) : ''}')" style="flex:1;background:var(--cyan);border:none;color:var(--on-accent);padding:12px;border-radius:var(--radius);font-weight:700;cursor:pointer">Αποθήκευση</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+}
+
+function submitFireSystem(editId) {
+  const name = document.getElementById('fs-name').value.trim();
+  const building = document.getElementById('fs-building').value.trim();
+  const notes = document.getElementById('fs-notes').value.trim();
+  const errEl = document.getElementById('fs-error');
+  if (!name) { errEl.textContent = 'Το όνομα είναι υποχρεωτικό'; errEl.style.display = 'block'; return; }
+
+  const fileInput = document.getElementById('fs-pdf');
+  const file = fileInput.files[0];
+  const btn = document.getElementById('fs-save-btn');
+  btn.disabled = true; btn.textContent = 'Αποθήκευση...';
+
+  const finish = (pdfBase64, pdfName) => {
+    const id = editId || ('fs_local_' + Date.now());
+    const payload = { id, name, building, notes };
+    if (pdfBase64) { payload.pdfBase64 = pdfBase64; payload.pdfName = pdfName; }
+
+    let sys = FIRE_SYSTEMS.find(s => s.id === id);
+    if (sys) { sys.name = name; sys.building = building; sys.notes = notes; }
+    else { sys = { id, name, building, notes, pdfUrl: '', pdfName: '' }; FIRE_SYSTEMS.push(sys); }
+    saveFireSystems();
+    logActivity(editId ? 'FIRE_SYSTEM_EDIT' : 'FIRE_SYSTEM_ADD', name);
+
+    gsSaveFireSystem(payload).then(res => {
+      if (res && res.id && !editId) { sys.id = res.id; fsDetailId = res.id; } // αντικατάσταση προσωρινού local id με το πραγματικό
+      saveFireSystems();
+      // Re-fetch: η απάντηση του save δεν περιλαμβάνει το πραγματικό pdfUrl
+      // (χρειάζεται φρέσκια ανάγνωση από το Sheet μετά το ανέβασμα στο Drive).
+      if (gsConnected) {
+        loadFireSystems(true).then(() => {
+          if (currentPage === 'firesystems') renderFireSystems(document.getElementById('main-content'));
+        });
+      }
+    });
+
+    document.getElementById('fs-edit-overlay').remove();
+    showToast(`✓ ${name} αποθηκεύτηκε`);
+    fsDetailId = id;
+    renderFireSystems(document.getElementById('main-content'));
+  };
+
+  if (file) {
+    if (file.size > 15 * 1024 * 1024) {
+      errEl.textContent = 'Το PDF είναι πολύ μεγάλο (μέγιστο 15MB)'; errEl.style.display = 'block';
+      btn.disabled = false; btn.textContent = 'Αποθήκευση'; return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => finish(reader.result, file.name);
+    reader.onerror = () => { errEl.textContent = 'Σφάλμα ανάγνωσης αρχείου'; errEl.style.display = 'block'; btn.disabled = false; btn.textContent = 'Αποθήκευση'; };
+    reader.readAsDataURL(file);
+  } else {
+    finish(null, null);
+  }
+}
+
+function deleteFireSystemUI(id) {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα', 'error'); return; }
+  const sys = FIRE_SYSTEMS.find(s => s.id === id);
+  if (!sys) return;
+  const entCount = fsEntriesFor(id).length;
+  if (!confirm(`Διαγραφή "${sys.name}";\n${entCount ? `Θα χαθεί και το ιστορικό (${entCount} καταχωρήσεις).\n` : ''}Η ενέργεια είναι μη αναστρέψιμη.`)) return;
+  FIRE_SYSTEMS = FIRE_SYSTEMS.filter(s => s.id !== id);
+  FIRE_SYSTEM_ENTRIES = FIRE_SYSTEM_ENTRIES.filter(e => e.systemId !== id);
+  saveFireSystems();
+  saveFireSystemEntries();
+  logActivity('FIRE_SYSTEM_DELETE', sys.name);
+  gsDeleteFireSystem(id);
+  fsDetailId = null;
+  showToast(`✓ Διαγράφηκε`);
+  renderFireSystems(document.getElementById('main-content'));
 }
 
 function renderNewProject(mc) {
@@ -7758,6 +8254,7 @@ function renderAddLinkBody(entityType, entityKey) {
 }
 
 function attachLinkToEntity(linkId, entityType, entityKey) {
+  if (!ROLES[currentUser.role].canAdmin) { showToast('Δεν έχεις δικαίωμα', 'error'); return; }
   const att = {
     id: 'la_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
     entityType, entityKey: String(entityKey), linkId: String(linkId),
@@ -8226,6 +8723,7 @@ function showAddCylinderModal(monthKey) {
 }
 
 async function saveCylinder(monthKey) {
+  if (!ROLES[currentUser.role].canAdd) { showToast('Δεν έχεις δικαίωμα', 'error'); return; }
   const cylNo   = document.getElementById('cyl-no').value.trim();
   const gas     = document.getElementById('cyl-gas').value.trim();
   if (!cylNo || !gas) { showToast('Συμπλήρωσε φιάλη και αέριο','error'); return; }
@@ -8308,6 +8806,7 @@ function editCylinder(id) {
 }
 
 function updateCylinder(id) {
+  if (!ROLES[currentUser.role].canAdd) { showToast('Δεν έχεις δικαίωμα', 'error'); return; }
   const idx = CYLINDERS.findIndex(c => String(c.id) === String(id));
   if (idx < 0) return;
   CYLINDERS[idx].cylNo   = document.getElementById('ecyl-no').value.trim();
@@ -8323,6 +8822,7 @@ function updateCylinder(id) {
 }
 
 function _confirmDeleteCylinder(id) {
+  if (!ROLES[currentUser.role].canAdd) { showToast('Δεν έχεις δικαίωμα', 'error'); return; }
   const sid = String(id);
   CYLINDERS = CYLINDERS.filter(c => String(c.id) !== sid);
   saveCylinders();
