@@ -4428,7 +4428,19 @@ function toggleTask(opt) {
   } else {
     selectedTasks.push(opt);
   }
-  renderAdd(document.getElementById('main-content'));
+  // ΣΗΜΑΝΤΙΚΟ: ΔΕΝ ξαναχτίζουμε όλη τη φόρμα εδώ (renderAdd) — αυτό έσβηνε
+  // την ημερομηνία (πάντα resetάρει σε "σήμερα"), τη φιάλη και τις σημειώσεις
+  // κάθε φορά που επιλεγόταν task. Ενημερώνουμε μόνο το συγκεκριμένο chip
+  // και την ορατότητα του πεδίου "Άλλο", χωρίς να αγγίξουμε τα υπόλοιπα.
+  document.querySelectorAll('#task-chips .task-chip').forEach((chip, i) => {
+    const chipOpt = TASK_OPTIONS[i];
+    const selected = selectedTasks.includes(chipOpt);
+    chip.classList.toggle('selected', selected);
+    const check = chip.querySelector('.chip-check');
+    if (check) check.textContent = selected ? '✓' : '○';
+  });
+  const altroInput = document.getElementById('altro-text');
+  if (altroInput) altroInput.classList.toggle('show', selectedTasks.includes('Άλλο'));
 }
 
 function submitEntry() {
