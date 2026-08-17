@@ -2109,6 +2109,7 @@ async function flushPendingChanges() {
 }
 
 // ── Load all data from Google Sheets ──
+let syncFailCount = 0;
 async function syncFromSheets() {
   if (gsSyncing) return;
   gsSyncing = true;
@@ -2376,6 +2377,7 @@ async function syncFromSheets() {
     }
 
     gsConnected = true;
+    syncFailCount = 0;
     {
       const pc = pendingChangesCount(), sc = stuckQueueCount();
       showSyncStatus(pc > 0 ? `✓ Συνδεδεμένο · ${pc} εκκρεμούν${sc > 0 ? ` (⚠${sc} χρειάζονται προσοχή)` : ''}` : '✓ Συνδεδεμένο', 'ok');
@@ -2388,6 +2390,19 @@ async function syncFromSheets() {
     {
       const pc = pendingChangesCount();
       showSyncStatus(pc > 0 ? `✗ Offline · ${pc} εκκρεμούν` : '✗ Offline', 'err');
+    }
+    // Γρήγορη αυτόματη επανάληψη (10s) αντί να περιμένουμε τον κανονικό
+    // κύκλο των 2 λεπτών — αλλά μόνο για τις πρώτες 3 αποτυχίες, ώστε να μην
+    // ξαναδοκιμάζει κάθε 10s επ' άπειρον αν είσαι πραγματικά χωρίς σήμα για
+    // ώρες (θα αναλάβει τότε ο κανονικός κύκλος 2 λεπτών, βλ. loginSuccess).
+    syncFailCount++;
+    if (syncFailCount <= 3) {
+      setTimeout(() => {
+        if (!gsConnected && !gsSyncing && navigator.onLine) {
+          showSyncStatus('⟳ Ξαναδοκιμάζω...');
+          syncFromSheets();
+        }
+      }, 10000);
     }
   } finally {
     gsSyncing = false;
@@ -3230,21 +3245,37 @@ async function doLogin() {
   // γίνεται ΠΑΝΤΑ στον server (action:'login') — δεν τραβάμε πια τα password
   // hash ΟΛΩΝ των χρηστών στη συσκευή για να τα συγκρίνουμε τοπικά. Αυτό
   // σημαίνει ότι το login για μη-default χρήστες χρειάζεται σύνδεση.
+  // (Αυτό καλύπτει και τον admin, αν ο κωδικός του άλλαξε ποτέ από τον
+  // hardcoded default — τότε ΔΕΝ ταιριάζει πια με το τοπικό USERS.admin.)
   if (gsConnected || GS_URL) {
     const btn = document.getElementById('l-btn');
     if (btn) { btn.textContent = '...'; btn.disabled = true; }
-    try {
-      const res = await gsPost({ action: 'login', data: { username: u, passHash: inputHash } });
-      if (res && res.ok && res.user) {
-        // Κρατάμε το inputHash τοπικά (όχι από τον server) ώστε ο χρήστης να
-        // μπορεί μετά να αλλάξει τον δικό του κωδικό / να κάνει admin ενέργειες
-        // χωρίς να ζητάμε ξανά τον server να μας πει το hash του.
-        loginSuccess(u, { ...res.user, passHash: inputHash });
-        return;
+    // Μέχρι 2 προσπάθειες — ένα timeout/χασμένο πακέτο δεν πρέπει να σε
+    // στέλνει κατευθείαν σε "λάθος κωδικός" όταν ο κωδικός ήταν σωστός.
+    let networkFailed = false;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const res = await gsPost({ action: 'login', data: { username: u, passHash: inputHash } });
+        if (res && res.ok && res.user) {
+          // Κρατάμε το inputHash τοπικά (όχι από τον server) ώστε ο χρήστης να
+          // μπορεί μετά να αλλάξει τον δικό του κωδικό / να κάνει admin ενέργειες
+          // χωρίς να ζητάμε ξανά τον server να μας πει το hash του.
+          loginSuccess(u, { ...res.user, passHash: inputHash });
+          if (btn) { btn.textContent = 'ΕΙΣΟΔΟΣ'; btn.disabled = false; }
+          return;
+        }
+        // Ο server απάντησε κανονικά αλλά είπε όχι — πραγματικά λάθος στοιχεία,
+        // δεν έχει νόημα να ξαναδοκιμάσουμε.
+        networkFailed = false;
+        break;
+      } catch(e) {
+        networkFailed = true; // timeout/δίκτυο — αξίζει ένα δεύτερο try
       }
-    } catch(e) {}
-    finally {
-      if (btn) { btn.textContent = 'ΕΙΣΟΔΟΣ'; btn.disabled = false; }
+    }
+    if (btn) { btn.textContent = 'ΕΙΣΟΔΟΣ'; btn.disabled = false; }
+    if (networkFailed) {
+      showLoginError(lang === 'el' ? 'Πρόβλημα σύνδεσης — δοκίμασε ξανά' : 'Connection problem — try again');
+      return;
     }
   }
 
@@ -3313,10 +3344,10 @@ function loginSuccess(u, user) {
   });
 }
 
-function showLoginError() {
+function showLoginError(msg) {
   const err = document.getElementById('login-error');
   err.style.display = 'block';
-  err.textContent = lang === 'el' ? 'Λάθος στοιχεία' : 'Invalid credentials';
+  err.textContent = msg || (lang === 'el' ? 'Λάθος στοιχεία' : 'Invalid credentials');
 }
 
 document.addEventListener('keydown', e => {
