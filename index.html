@@ -4043,6 +4043,21 @@ function saveEditedEntry(tag, idx) {
     date, task, cylinder: cyl, tech, notes,
   });
 
+  // ΣΗΜΑΝΤΙΚΟ: αν άλλαξε η ημερομηνία, η "Επόμενος" μπορεί να έχει μείνει
+  // λάθος/παλιά — ξαναϋπολόγισέ την βάσει της πραγματικά πιο πρόσφατης
+  // καταχώρησης, ίδιο fix με το addEntry/setDetInterval.
+  const last = getLastCalDate(det);
+  if (last) {
+    const interval = getIntervalMonths(det);
+    const nd = new Date(last);
+    nd.setMonth(nd.getMonth() + interval);
+    const newNextCal = nd.toISOString().split('T')[0];
+    if (newNextCal !== det.nextCalDate) {
+      det.nextCalDate = newNextCal;
+      gsAutoUpdateNextCal({ tag, nextCalDate: newNextCal });
+    }
+  }
+
   document.getElementById('editentry-overlay').remove();
   logActivity('EDIT_ENTRY', `${tag} · ${date} · ${task}`);
   showToast('✓ Η εγγραφή ενημερώθηκε');
@@ -4061,6 +4076,20 @@ function deleteHistoryEntry(tag, idx) {
   gsDeleteEntry({ tag, date: orig.date, tech: orig.tech });
   logActivity('DELETE_ENTRY', `${tag} · ${orig.date} · ${orig.task||'—'}`);
 
+  // ΣΗΜΑΝΤΙΚΟ: αν διέγραψες την πιο πρόσφατη βαθμονόμηση, η "Επόμενος" πρέπει
+  // να ξαναϋπολογιστεί βάσει της νέας πιο πρόσφατης (ή να καθαριστεί αν δεν
+  // έμεινε καμία καταχώρηση).
+  const last = getLastCalDate(det);
+  const interval = getIntervalMonths(det);
+  if (last) {
+    const nd = new Date(last);
+    nd.setMonth(nd.getMonth() + interval);
+    det.nextCalDate = nd.toISOString().split('T')[0];
+  } else {
+    det.nextCalDate = '';
+  }
+  gsAutoUpdateNextCal({ tag, nextCalDate: det.nextCalDate });
+
   document.getElementById('editentry-overlay')?.remove();
   showToast('✓ Η εγγραφή διαγράφηκε');
   renderDetectorDetail(document.getElementById('main-content'));
@@ -4071,7 +4100,18 @@ function setDetInterval(tag, val) {
   const det = DETECTORS.find(d => d.tag === tag);
   if (det) {
     det.calInterval = parseInt(val);
-    gsUpdateDetector({ tag, calInterval: parseInt(val) });
+    // ΣΗΜΑΝΤΙΚΟ: επανυπολόγισε την "Επόμενος" βάσει της τελευταίας πραγματικής
+    // βαθμονόμησης + του ΝΕΟΥ interval — πριν η αλλαγή interval δεν άγγιζε
+    // καθόλου την ήδη αποθηκευμένη ημερομηνία, οπότε η "Επόμενος" έμενε λάθος.
+    const last = getLastCalDate(det);
+    const payload = { tag, calInterval: parseInt(val) };
+    if (last) {
+      const d = new Date(last);
+      d.setMonth(d.getMonth() + parseInt(val));
+      det.nextCalDate = d.toISOString().split('T')[0];
+      payload.nextCalDate = det.nextCalDate;
+    }
+    gsUpdateDetector(payload);
     renderDetectorDetail(document.getElementById('main-content'));
   }
 }
@@ -4510,8 +4550,14 @@ function submitEntry() {
   // Auto-update next cal date για ΚΑΘΕ τύπο εργασίας συντήρησης
   // (Βαθμονόμηση, Αλλαγή αισθητήρα, Αλλαγή κάρτας, Αλλαγή καλωδίου, Άλλο)
   // — κάθε επέμβαση μηδενίζει το ρολόι μέχρι τον επόμενο προγραμματισμένο έλεγχο.
+  // ΣΗΜΑΝΤΙΚΟ: υπολογίζουμε βάσει της ΠΡΑΓΜΑΤΙΚΑ πιο πρόσφατης καταχώρησης
+  // (getLastCalDate, που ταξινομεί κανονικά κατά ημερομηνία) — ΟΧΙ βάσει της
+  // καταχώρησης που μόλις προστέθηκε. Αλλιώς, αν προσθέσεις μια ξεχασμένη
+  // παλιότερη καταχώρηση ΜΕΤΑ από μια πιο πρόσφατη, θα έγραφε από πάνω τη
+  // σωστή επόμενη ημερομηνία με λάθος, παλιότερη.
   const interval = getIntervalMonths(det);
-  const nextDate = new Date(date);
+  const trueLastDate = getLastCalDate(det) || date;
+  const nextDate = new Date(trueLastDate);
   nextDate.setMonth(nextDate.getMonth() + interval);
   det.nextCalDate = nextDate.toISOString().split('T')[0];
   gsAutoUpdateNextCal({ tag, nextCalDate: det.nextCalDate });
@@ -6765,6 +6811,55 @@ function renderSchedule(mc) {
     }
   }
 
+  // ── ΕΚΚΡΕΜΟΤΗΤΕΣ ΠΡΟΗΓΟΥΜΕΝΩΝ ΜΗΝΩΝ ──
+  // Ανιχνευτές που η "Επόμενος" τους έπεσε ΠΡΙΝ τον μήνα που κοιτάμε και ΔΕΝ
+  // έχουν ακόμα γίνει — δηλαδή ξέμειναν από προηγούμενο μήνα, όχι απλά είναι
+  // προγραμματισμένοι για αυτόν. Ταξινομημένοι με τους πιο παλιούς πρώτα.
+  const selMonthStart = new Date(y, m, 1);
+  let backlogList = DETECTORS.filter(d => {
+    const nd = getNextCalDate(d);
+    return nd && new Date(nd) < selMonthStart;
+  });
+  if (schedFilterArea !== 'all') backlogList = backlogList.filter(d => d.area === schedFilterArea);
+  if (schedSearchQ.trim()) {
+    const q = schedSearchQ.trim().toLowerCase();
+    backlogList = backlogList.filter(d =>
+      (d.tag || '').toLowerCase().includes(q) ||
+      (d.location || '').toLowerCase().includes(q) ||
+      (d.type || '').toLowerCase().includes(q) ||
+      (d.area || '').toLowerCase().includes(q)
+    );
+  }
+  backlogList.sort((a,b) => new Date(getNextCalDate(a)) - new Date(getNextCalDate(b)));
+
+  let backlogHtml = '';
+  if (backlogList.length > 0) {
+    backlogHtml = `
+      <div style="background:var(--red);color:#fff;padding:8px 12px;border-radius:8px 8px 0 0;font-family:var(--cond);font-weight:700;font-size:13px;letter-spacing:0.3px;margin-top:4px">
+        ⚠ ΕΚΚΡΕΜΟΤΗΤΕΣ ΠΡΟΗΓΟΥΜΕΝΩΝ ΜΗΝΩΝ (${backlogList.length})
+      </div>
+      <div style="border:1px solid var(--red);border-top:none;border-radius:0 0 8px 8px;margin-bottom:16px;overflow:hidden">
+        ${backlogList.map(d => {
+          const nd = getNextCalDate(d);
+          return `
+          <div class="sched-item no-entry" onclick="openDetector('${d.tag}')">
+            <div style="flex:1;min-width:0">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <span class="sched-tag">${d.tag}</span>
+                <span class="sched-done-badge" style="background:#fde0de;color:#8a1010;border:1px solid #e08080">⏳ ΕΚΚΡΕΜΕΙ</span>
+              </div>
+              <div class="sched-loc">${d.location || d.area || ''} · ${d.type || ''}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              <div class="sched-date" style="color:var(--red2)">${formatDate(nd)}</div>
+              <div style="font-size:10px;color:var(--text3)">${d.calInterval || '—'}μ</div>
+            </div>
+            <span style="color:var(--text3);font-size:16px;margin-left:4px">›</span>
+          </div>`;
+        }).join('')}
+      </div>`;
+  }
+
   mc.innerHTML = `
     <div class="page-header">
       <div class="page-title">📅 ΜΗΝΙΑΙΟ ΠΡΟΓΡΑΜΜΑ</div>
@@ -6835,6 +6930,9 @@ function renderSchedule(mc) {
     <div class="filter-row" style="margin-bottom:12px">
       ${areas.map(a => `<div class="filter-pill ${schedFilterArea===a?'active':''}" onclick="schedFilterArea='${a}';renderSchedule(document.getElementById('main-content'))">${a==='all'?'Όλες οι περιοχές':a}</div>`).join('')}
     </div>
+
+    <!-- Backlog (προηγούμενοι μήνες) -->
+    ${backlogHtml}
 
     <!-- View filter indicator -->
     ${total > 0 ? `
@@ -8818,7 +8916,7 @@ function editCylinder(id) {
         </div>
         <div>
           <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--cond);font-weight:700">ΗΜ. ΛΗΞΗΣ</div>
-          <input id="ecyl-exp" type="text" value="${formatDate(cyl.expDate) === '—' ? '' : formatDate(cyl.expDate)}"
+          <input id="ecyl-exp" type="text" value="${npEsc(cyl.expDate || '')}" placeholder="π.χ. Sep 2027, 19/04/2028"
             style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:8px;font-family:var(--mono);font-size:13px;box-sizing:border-box">
         </div>
         <div>
