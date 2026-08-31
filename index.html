@@ -1665,6 +1665,9 @@ function clearPendingRename(oldTag) {
 // την ίδια αμυντική λογική re-apply που υπήρχε ήδη (βλ. παρακάτω).
 function pendingRenamesView() { return PENDING_QUEUE.filter(q => q.action === 'renameDetector').map(q => q.data); }
 function pendingEntriesView() { return PENDING_QUEUE.filter(q => ['addEntry','updateEntry','deleteEntry'].includes(q.action)); }
+// Pending αλλαγές σε πεδία ΑΝΙΧΝΕΥΤΗ (nextCalDate, calInterval, κλπ) που δεν
+// έχουν ακόμα επιβεβαιωθεί στο Sheet — βλ. χρήση στο syncFromSheets().
+function pendingDetectorPatchesView() { return PENDING_QUEUE.filter(q => ['updateDetector','updateDetectorAuto'].includes(q.action)); }
 
 function pendingChangesCount() {
   return PENDING_QUEUE.length;
@@ -2199,6 +2202,23 @@ async function syncFromSheets() {
         if (sheetDetTags.has(q.data.oldTag)) {
           DETECTORS = DETECTORS.filter(d => d.tag !== q.data.oldTag);
         }
+      });
+
+      // Ασφάλεια: αν εκκρεμεί ακόμα updateDetector/updateDetectorAuto (π.χ. η
+      // "Επόμενος" που μόλις υπολόγισε το submitEntry/setDetInterval κλπ δεν
+      // πρόλαβε να φτάσει στο Sheet), το merge πιο πάνω μόλις τη ξανάγραψε με
+      // την ΠΑΛΙΑ τιμή του Sheet ("remote wins"). Ξαναεφάρμοσε ό,τι εκκρεμεί
+      // πάνω στα φρεσκο-φορτωμένα δεδομένα, ίδιο fix με το pendingEntriesView
+      // παρακάτω για τα entries — αλλιώς η "Επόμενος" εμφανίζεται προσωρινά
+      // λάθος μέχρι να ξανασυγχρονιστεί επιτυχώς η ουρά.
+      pendingDetectorPatchesView().forEach(pp => {
+        const d = pp.data;
+        const det = DETECTORS.find(x => x.tag === d.tag);
+        if (!det) return;
+        Object.keys(d).forEach(k => {
+          if (k === 'tag' || k === 'auth' || d[k] === undefined) return;
+          det[k] = d[k];
+        });
       });
     }
 
