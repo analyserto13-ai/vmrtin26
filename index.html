@@ -2596,19 +2596,41 @@ function getLastCalDate(det) {
   return det.entries.slice().sort((a,b) => b.date.localeCompare(a.date))[0].date;
 }
 
-// Πραγματικά πιο πρόσφατη καταχώρηση, ΑΝΕΞΑΡΤΗΤΑ από τύπο εργασίας
+// Πλήρες αντικείμενο της πιο πρόσφατης καταχώρησης, ΑΝΕΞΑΡΤΗΤΑ από τύπο
+// εργασίας. Χρησιμοποιείται από getLastEntryDate() και isInFault() ώστε ΟΛΑ
+// τα σημεία που ενημερώνουν το "Επόμενος" (submitEntry, saveEditedEntry,
+// deleteHistoryEntry, setDetInterval) να συμφωνούν στο ποια είναι η πιο
+// πρόσφατη καταχώρηση — μία πηγή αλήθειας αντί για ξεχωριστή λογική σε καθένα.
+function getLastEntry(det) {
+  if (!det.entries.length) return null;
+  return det.entries.slice().sort((a,b) => b.date.localeCompare(a.date))[0];
+}
+
+// Πραγματικά πιο πρόσφατη ημερομηνία καταχώρησης, ΑΝΕΞΑΡΤΗΤΑ από τύπο εργασίας
 // (Βαθμονόμηση, Άλλο, Αλλαγή αισθητήρα, κλπ). Σε αντίθεση με την getLastCalDate,
 // δεν φιλτράρει μόνο εγγραφές που περιέχουν τη λέξη "βαθμονόμηση" — γι' αυτό
-// χρησιμοποιείται στο submitEntry() για να μηδενίζει σωστά το ρολόι σε ΚΑΘΕ
-// επέμβαση, ακόμα κι όταν η εργασία είναι ελεύθερο κείμενο στο "Άλλο".
+// χρησιμοποιείται για να μηδενίζει σωστά το ρολόι σε ΚΑΘΕ επέμβαση, ακόμα κι
+// όταν η εργασία είναι ελεύθερο κείμενο στο "Άλλο".
 function getLastEntryDate(det) {
-  if (!det.entries.length) return null;
-  return det.entries.slice().sort((a,b) => b.date.localeCompare(a.date))[0].date;
+  const e = getLastEntry(det);
+  return e ? e.date : null;
+}
+
+// true αν η πιο πρόσφατη καταχώρηση δείχνει το όργανο ΑΚΟΜΑ σε βλάβη
+// (περιλαμβάνει "Βλάβη" στις εργασίες της) — σε αυτή την περίπτωση δεν
+// προχωράμε το "Επόμενος" μέχρι να καταγραφεί πραγματική επισκευή.
+function isInFault(det) {
+  const e = getLastEntry(det);
+  if (!e) return false;
+  return String(e.task||'').split('|').map(s=>s.trim()).includes('Βλάβη');
 }
 
 function getNextCalDate(det) {
-  if (det.nextCalDate) return det.nextCalDate; // manually set
-  const last = getLastCalDate(det);
+  if (det.nextCalDate) return det.nextCalDate; // manually set / auto-ενημερωμένο
+  // Fallback για ανιχνευτές χωρίς αποθηκευμένο nextCalDate (π.χ. παλιά εισαγωγή
+  // δεδομένων) — βάσει της πραγματικά πιο πρόσφατης καταχώρησης, ΟΧΙ μόνο
+  // αυτών που περιέχουν "βαθμονόμηση" (ίδιο fix με τα υπόλοιπα σημεία).
+  const last = getLastEntryDate(det);
   if (!last) return null;
   const d = new Date(last);
   d.setMonth(d.getMonth() + getIntervalMonths(det));
@@ -4081,16 +4103,20 @@ function saveEditedEntry(tag, idx) {
 
   // ΣΗΜΑΝΤΙΚΟ: αν άλλαξε η ημερομηνία, η "Επόμενος" μπορεί να έχει μείνει
   // λάθος/παλιά — ξαναϋπολόγισέ την βάσει της πραγματικά πιο πρόσφατης
-  // καταχώρησης, ίδιο fix με το addEntry/setDetInterval.
-  const last = getLastCalDate(det);
-  if (last) {
-    const interval = getIntervalMonths(det);
-    const nd = new Date(last);
-    nd.setMonth(nd.getMonth() + interval);
-    const newNextCal = nd.toISOString().split('T')[0];
-    if (newNextCal !== det.nextCalDate) {
-      det.nextCalDate = newNextCal;
-      gsAutoUpdateNextCal({ tag, nextCalDate: newNextCal });
+  // καταχώρησης (getLastEntryDate, ΟΧΙ getLastCalDate — ίδιο fix με το
+  // submitEntry). Αν η πιο πρόσφατη καταχώρηση είναι "Βλάβη", μην προχωρήσεις
+  // το ρολόι.
+  if (!isInFault(det)) {
+    const last = getLastEntryDate(det);
+    if (last) {
+      const interval = getIntervalMonths(det);
+      const nd = new Date(last);
+      nd.setMonth(nd.getMonth() + interval);
+      const newNextCal = nd.toISOString().split('T')[0];
+      if (newNextCal !== det.nextCalDate) {
+        det.nextCalDate = newNextCal;
+        gsAutoUpdateNextCal({ tag, nextCalDate: newNextCal });
+      }
     }
   }
 
@@ -4112,19 +4138,24 @@ function deleteHistoryEntry(tag, idx) {
   gsDeleteEntry({ tag, date: orig.date, tech: orig.tech });
   logActivity('DELETE_ENTRY', `${tag} · ${orig.date} · ${orig.task||'—'}`);
 
-  // ΣΗΜΑΝΤΙΚΟ: αν διέγραψες την πιο πρόσφατη βαθμονόμηση, η "Επόμενος" πρέπει
-  // να ξαναϋπολογιστεί βάσει της νέας πιο πρόσφατης (ή να καθαριστεί αν δεν
-  // έμεινε καμία καταχώρηση).
-  const last = getLastCalDate(det);
-  const interval = getIntervalMonths(det);
-  if (last) {
-    const nd = new Date(last);
-    nd.setMonth(nd.getMonth() + interval);
-    det.nextCalDate = nd.toISOString().split('T')[0];
+  // ΣΗΜΑΝΤΙΚΟ: αν διέγραψες την πιο πρόσφατη καταχώρηση, η "Επόμενος" πρέπει
+  // να ξαναϋπολογιστεί βάσει της νέας πιο πρόσφατης (getLastEntryDate, ΟΧΙ
+  // getLastCalDate) — ή να καθαριστεί αν δεν έμεινε καμία καταχώρηση. Αν η
+  // νέα πιο πρόσφατη καταχώρηση είναι "Βλάβη", μην προχωρήσεις το ρολόι.
+  if (isInFault(det)) {
+    // παραμένει σε βλάβη μετά τη διαγραφή — δεν αγγίζουμε την "Επόμενος"
   } else {
-    det.nextCalDate = '';
+    const last = getLastEntryDate(det);
+    const interval = getIntervalMonths(det);
+    if (last) {
+      const nd = new Date(last);
+      nd.setMonth(nd.getMonth() + interval);
+      det.nextCalDate = nd.toISOString().split('T')[0];
+    } else {
+      det.nextCalDate = '';
+    }
+    gsAutoUpdateNextCal({ tag, nextCalDate: det.nextCalDate });
   }
-  gsAutoUpdateNextCal({ tag, nextCalDate: det.nextCalDate });
 
   document.getElementById('editentry-overlay')?.remove();
   showToast('✓ Η εγγραφή διαγράφηκε');
@@ -4137,15 +4168,19 @@ function setDetInterval(tag, val) {
   if (det) {
     det.calInterval = parseInt(val);
     // ΣΗΜΑΝΤΙΚΟ: επανυπολόγισε την "Επόμενος" βάσει της τελευταίας πραγματικής
-    // βαθμονόμησης + του ΝΕΟΥ interval — πριν η αλλαγή interval δεν άγγιζε
-    // καθόλου την ήδη αποθηκευμένη ημερομηνία, οπότε η "Επόμενος" έμενε λάθος.
-    const last = getLastCalDate(det);
+    // καταχώρησης (getLastEntryDate, ΟΧΙ getLastCalDate) + του ΝΕΟΥ interval —
+    // πριν η αλλαγή interval δεν άγγιζε καθόλου την ήδη αποθηκευμένη ημερομηνία,
+    // οπότε η "Επόμενος" έμενε λάθος. Αν το όργανο είναι ακόμα σε βλάβη, μην
+    // προχωρήσεις το ρολόι — απλώς αποθήκευσε το νέο interval.
     const payload = { tag, calInterval: parseInt(val) };
-    if (last) {
-      const d = new Date(last);
-      d.setMonth(d.getMonth() + parseInt(val));
-      det.nextCalDate = d.toISOString().split('T')[0];
-      payload.nextCalDate = det.nextCalDate;
+    if (!isInFault(det)) {
+      const last = getLastEntryDate(det);
+      if (last) {
+        const d = new Date(last);
+        d.setMonth(d.getMonth() + parseInt(val));
+        det.nextCalDate = d.toISOString().split('T')[0];
+        payload.nextCalDate = det.nextCalDate;
+      }
     }
     gsUpdateDetector(payload);
     renderDetectorDetail(document.getElementById('main-content'));
