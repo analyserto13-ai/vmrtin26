@@ -1510,6 +1510,29 @@ function getAllAreaOptions() {
   return Array.from(real).sort((a,b) => a.localeCompare(b, 'el'));
 }
 
+// Για autocomplete στα πεδία Κατασκευαστής/Μοντέλο — όλες οι τιμές που ήδη
+// υπάρχουν σε οποιονδήποτε ανιχνευτή, ώστε να προτείνονται καθώς πληκτρολογείς.
+function getAllManufacturers() {
+  return Array.from(new Set(DETECTORS.map(d => String(d.manufacturer || '').trim()).filter(Boolean))).sort((a,b) => a.localeCompare(b));
+}
+function getAllModels() {
+  return Array.from(new Set(DETECTORS.map(d => String(d.model || '').trim()).filter(Boolean))).sort((a,b) => a.localeCompare(b));
+}
+
+// Για autocomplete στο πεδίο "Άλλο" (ελεύθερη περιγραφή εργασίας) — μαζεύει
+// όλες τις προηγούμενες καταχωρήσεις που ΔΕΝ ταιριάζουν με τυπική επιλογή
+// (Βαθμονόμηση/Αλλαγή αισθητήρα/κλπ), δηλαδή ήταν ελεύθερο κείμενο.
+function getAllCustomTaskTexts() {
+  const standard = new Set(TASK_OPTIONS.filter(t => t !== 'Άλλο'));
+  const custom = new Set();
+  DETECTORS.forEach(d => d.entries.forEach(e => {
+    String(e.task || '').split('|').map(s => s.trim()).forEach(part => {
+      if (part && !standard.has(part)) custom.add(part);
+    });
+  }));
+  return Array.from(custom).sort((a,b) => a.localeCompare(b, 'el'));
+}
+
 // Load saved lists from localStorage
 function loadSavedLists() {
   try {
@@ -3858,9 +3881,10 @@ function renderDetectorDetail(mc) {
       </div>
       <div style="display:none;align-items:center;gap:6px;margin:3px 0" id="mfr-edit-${d.tag}">
         <span style="font-size:12px;color:var(--text3)">🏭</span>
-        <input id="mfr-input-${d.tag}" type="text" value="${(d.manufacturer||'').replace(/"/g,'&quot;')}" placeholder="π.χ. Honeywell, Dräger..."
+        <input id="mfr-input-${d.tag}" type="text" list="mfr-datalist" value="${(d.manufacturer||'').replace(/"/g,'&quot;')}" placeholder="π.χ. Honeywell, Dräger..."
           style="font-size:12px;padding:3px 8px;border:1px solid var(--accent);border-radius:6px;background:var(--bg3);color:var(--text);width:160px"
           onkeydown="if(event.key==='Enter')saveMfr('${d.tag}');if(event.key==='Escape')cancelEditMfr('${d.tag}')">
+        <datalist id="mfr-datalist">${getAllManufacturers().map(m => `<option value="${m.replace(/"/g,'&quot;')}">`).join('')}</datalist>
         <button onclick="saveMfr('${d.tag}')" style="background:var(--green);color:#fff;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px;font-family:var(--cond);font-weight:700">✓</button>
         <button onclick="cancelEditMfr('${d.tag}')" style="background:var(--bg4);color:var(--text2);border:none;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px">✕</button>
       </div>
@@ -3874,9 +3898,10 @@ function renderDetectorDetail(mc) {
       </div>
       <div style="display:none;align-items:center;gap:6px;margin:3px 0" id="model-edit-${d.tag}">
         <span style="font-size:12px;color:var(--text3)">🔧</span>
-        <input id="model-input-${d.tag}" type="text" value="${(d.model||'').replace(/"/g,'&quot;')}" placeholder="π.χ. XNX-UTSI-MNNI1..."
+        <input id="model-input-${d.tag}" type="text" list="model-datalist" value="${(d.model||'').replace(/"/g,'&quot;')}" placeholder="π.χ. XNX-UTSI-MNNI1..."
           style="font-size:12px;padding:3px 8px;border:1px solid var(--accent);border-radius:6px;background:var(--bg3);color:var(--text);width:160px"
           onkeydown="if(event.key==='Enter')saveModel('${d.tag}');if(event.key==='Escape')cancelEditModel('${d.tag}')">
+        <datalist id="model-datalist">${getAllModels().map(m => `<option value="${m.replace(/"/g,'&quot;')}">`).join('')}</datalist>
         <button onclick="saveModel('${d.tag}')" style="background:var(--green);color:#fff;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px;font-family:var(--cond);font-weight:700">✓</button>
         <button onclick="cancelEditModel('${d.tag}')" style="background:var(--bg4);color:var(--text2);border:none;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px">✕</button>
       </div>
@@ -3992,7 +4017,8 @@ function showEditEntryModal(tag, idx) {
       <div style="margin-bottom:10px">${dateMaskInputHTML('ee-date', e.date || '', "v => {}", 'width:100%;padding:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);font-size:14px;box-sizing:border-box')}</div>
 
       <label class="field-label">ΕΡΓΑΣΙΑ</label>
-      <input type="text" class="field-input" id="ee-task" value="${(e.task||'').replace(/"/g,'&quot;')}" style="margin-bottom:10px">
+      <input type="text" class="field-input" id="ee-task" list="ee-task-datalist" value="${(e.task||'').replace(/"/g,'&quot;')}" style="margin-bottom:10px">
+      <datalist id="ee-task-datalist">${getAllCustomTaskTexts().map(x => `<option value="${x.replace(/"/g,'&quot;')}">`).join('')}</datalist>
 
       <label class="field-label">ΤΕΧΝΙΤΗΣ</label>
       <input type="text" class="field-input" id="ee-tech" value="${(e.tech||'').replace(/"/g,'&quot;')}" style="margin-bottom:10px">
@@ -4469,7 +4495,8 @@ function renderAdd(mc) {
           </div>
         `).join('')}
       </div>
-      <input type="text" class="altro-input ${selectedTasks.includes('Άλλο')?'show':''}" id="altro-text" placeholder="${t('form-altro')}">
+      <input type="text" class="altro-input ${selectedTasks.includes('Άλλο')?'show':''}" id="altro-text" list="altro-datalist" placeholder="${t('form-altro')}">
+      <datalist id="altro-datalist">${getAllCustomTaskTexts().map(x => `<option value="${x.replace(/"/g,'&quot;')}">`).join('')}</datalist>
     </div>
     <div class="form-group">
       <label class="form-label">${t('form-cyl')}</label>
