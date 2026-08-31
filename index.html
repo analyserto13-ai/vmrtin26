@@ -2028,7 +2028,7 @@ function saveDetectors() {
 
 loadSavedDetectors();
 
-const TASK_OPTIONS = ['Βαθμονόμηση','Αλλαγή αισθητήρα','Αλλαγή κάρτας','Αλλαγή καλωδίου','Άλλο'];
+const TASK_OPTIONS = ['Βαθμονόμηση','Αλλαγή αισθητήρα','Αλλαγή κάρτας','Αλλαγή καλωδίου','Βλάβη','Άλλο'];
 
 // ══════════════════════════════════════════
 // GOOGLE SHEETS API
@@ -2593,6 +2593,16 @@ function getLastCalDate(det) {
     .sort((a,b) => b.date.localeCompare(a.date));
   if (sorted.length) return sorted[0].date;
   // fallback: most recent entry
+  return det.entries.slice().sort((a,b) => b.date.localeCompare(a.date))[0].date;
+}
+
+// Πραγματικά πιο πρόσφατη καταχώρηση, ΑΝΕΞΑΡΤΗΤΑ από τύπο εργασίας
+// (Βαθμονόμηση, Άλλο, Αλλαγή αισθητήρα, κλπ). Σε αντίθεση με την getLastCalDate,
+// δεν φιλτράρει μόνο εγγραφές που περιέχουν τη λέξη "βαθμονόμηση" — γι' αυτό
+// χρησιμοποιείται στο submitEntry() για να μηδενίζει σωστά το ρολόι σε ΚΑΘΕ
+// επέμβαση, ακόμα κι όταν η εργασία είναι ελεύθερο κείμενο στο "Άλλο".
+function getLastEntryDate(det) {
+  if (!det.entries.length) return null;
   return det.entries.slice().sort((a,b) => b.date.localeCompare(a.date))[0].date;
 }
 
@@ -4582,12 +4592,17 @@ function submitEntry() {
   // καταχώρησης που μόλις προστέθηκε. Αλλιώς, αν προσθέσεις μια ξεχασμένη
   // παλιότερη καταχώρηση ΜΕΤΑ από μια πιο πρόσφατη, θα έγραφε από πάνω τη
   // σωστή επόμενη ημερομηνία με λάθος, παλιότερη.
-  const interval = getIntervalMonths(det);
-  const trueLastDate = getLastCalDate(det) || date;
-  const nextDate = new Date(trueLastDate);
-  nextDate.setMonth(nextDate.getMonth() + interval);
-  det.nextCalDate = nextDate.toISOString().split('T')[0];
-  gsAutoUpdateNextCal({ tag, nextCalDate: det.nextCalDate });
+  // ΕΞΑΙΡΕΣΗ: αν η καταχώρηση είναι "Βλάβη", το όργανο παραμένει εκτός λειτουργίας
+  // — ΔΕΝ μηδενίζουμε το ρολόι. Ο επόμενος προγραμματισμένος έλεγχος μένει όπως
+  // ήταν, μέχρι να καταγραφεί η πραγματική επισκευή (Βαθμονόμηση/Αλλαγή αισθητήρα/κλπ).
+  if (!selectedTasks.includes('Βλάβη')) {
+    const interval = getIntervalMonths(det);
+    const trueLastDate = getLastEntryDate(det) || date;
+    const nextDate = new Date(trueLastDate);
+    nextDate.setMonth(nextDate.getMonth() + interval);
+    det.nextCalDate = nextDate.toISOString().split('T')[0];
+    gsAutoUpdateNextCal({ tag, nextCalDate: det.nextCalDate });
+  }
 
   selectedTasks = [];
   selectedDetector = det;
@@ -4625,6 +4640,7 @@ function renderStats(mc) {
     'Αλλαγή αισθητήρα': '#c0251e',
     'Αλλαγή κάρτας':    '#5a3a8a',
     'Αλλαγή καλωδίου':  '#7a5800',
+    'Βλάβη':            '#c0251e',
     'Άλλο':             '#1a7a88',
     'Άλλο/Σύνθετο':     '#1a7a88',
   };
