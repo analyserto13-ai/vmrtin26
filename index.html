@@ -1987,8 +1987,12 @@ function logActivity(action, details) {
   local.unshift(entry);
   if (local.length > 100) local.length = 100;
   localStorage.setItem('marnik26_activity_log', JSON.stringify(local));
-  // Στείλε ασύγχρονα στο Sheet (χωρίς await — δεν ενδιαφέρει η απάντηση)
-  gsPost({ action: 'addActivityLog', data: entry }).catch(() => {});
+  // Στείλε ασύγχρονα στο Sheet (χωρίς await — δεν ενδιαφέρει η απάντηση).
+  // Το backend addActivityLog απαιτεί πλέον έγκυρη σύνδεση (βλ. server fix) —
+  // το auth προστίθεται ΜΟΝΟ εδώ, στο payload που φεύγει, ΟΧΙ μέσα στο
+  // entry που αποθηκεύεται στο localStorage λίγο πιο πάνω (δεν θέλουμε
+  // passHash να μένει αποθηκευμένο τοπικά μαζί με το ιστορικό ενεργειών).
+  gsPost({ action: 'addActivityLog', data: { ...entry, auth: authPayload() } }).catch(() => {});
 }
 
 function getCurrentMonthKey() {
@@ -3750,7 +3754,7 @@ function renderDashboard(mc) {
         <div class="history-entry" onclick="openDetector('${e.tag}')" style="cursor:pointer">
           <div class="hist-date">${formatDate(e.date)}</div>
           <div class="hist-task">${e.task} <span style="font-family:var(--mono);font-size:12px;color:var(--accent)">${e.tag}</span></div>
-          <div class="hist-tech">${e.tech}</div>
+          <div class="hist-tech">${escapeHtml(e.tech)}</div>
         </div>
       `).join('') : `<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">${t('no-hist')}</div></div>`}
     </div>
@@ -3913,14 +3917,14 @@ function renderDetectorDetail(mc) {
           style="background:none;border:none;cursor:pointer;font-size:13px;color:var(--text3);padding:0 2px">✏️</button>
       </div>
       <div style="display:none;align-items:center;gap:6px;margin:6px 0 2px 0" id="loc-edit-${d.tag}">
-        <input id="loc-input-${d.tag}" type="text" value="${d.location||''}" placeholder="π.χ. K-2101, Pump Area..."
+        <input id="loc-input-${d.tag}" type="text" value="${escapeHtml(d.location||'')}" placeholder="π.χ. K-2101, Pump Area..."
           style="font-size:13px;font-family:var(--mono);padding:4px 8px;border:1px solid var(--accent);border-radius:6px;background:var(--bg3);color:var(--text);width:180px"
           onkeydown="if(event.key==='Enter')saveLocation('${d.tag}');if(event.key==='Escape')cancelEditLocation('${d.tag}')">
         <button onclick="saveLocation('${d.tag}')" style="background:var(--green);color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;font-family:var(--cond);font-weight:700">✓</button>
         <button onclick="cancelEditLocation('${d.tag}')" style="background:var(--bg4);color:var(--text2);border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">✕</button>
       </div>
       ` : `
-      ${d.location ? `<div style="font-size:13px;color:var(--text2);margin:4px 0;font-family:var(--mono)">${d.location}</div>` : ''}
+      ${d.location ? `<div style="font-size:13px;color:var(--text2);margin:4px 0;font-family:var(--mono)">${escapeHtml(d.location)}</div>` : ''}
       `}
 
       <!-- ΚΑΤΑΣΚΕΥΑΣΤΗΣ (inline edit) -->
@@ -4034,8 +4038,8 @@ function renderDetectorDetail(mc) {
         ` : ''}
         <div class="hist-date">📅 ${formatDate(e.date)}</div>
         <div class="hist-task">🔧 ${e.task}</div>
-        <div class="hist-tech">👤 ${e.tech} ${e.cylinder ? `<span class="hist-cylinder">${e.cylinder}</span>` : ''}</div>
-        ${e.notes ? `<div class="hist-tech" style="margin-top:4px;font-style:italic">💬 ${e.notes}</div>` : ''}
+        <div class="hist-tech">👤 ${escapeHtml(e.tech)} ${e.cylinder ? `<span class="hist-cylinder">${e.cylinder}</span>` : ''}</div>
+        ${e.notes ? `<div class="hist-tech" style="margin-top:4px;font-style:italic">💬 ${escapeHtml(e.notes)}</div>` : ''}
       </div>
     `).join('') : `<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">${t('no-hist')}</div></div>`}
 
@@ -4079,7 +4083,7 @@ function showEditEntryModal(tag, idx) {
       <input type="text" class="field-input" id="ee-cyl" value="${(e.cylinder||'').replace(/"/g,'&quot;')}" style="margin-bottom:10px">
 
       <label class="field-label">ΣΗΜΕΙΩΣΕΙΣ</label>
-      <textarea class="field-input" id="ee-notes" rows="2" style="margin-bottom:16px;resize:vertical">${e.notes||''}</textarea>
+      <textarea class="field-input" id="ee-notes" rows="2" style="margin-bottom:16px;resize:vertical">${escapeHtml(e.notes||'')}</textarea>
 
       <div id="ee-error" style="color:var(--red2);font-size:13px;margin-bottom:10px;display:none"></div>
       <div style="display:flex;gap:8px;margin-bottom:8px">
@@ -5231,11 +5235,11 @@ function renderAdmin(mc) {
         <div class="user-row">
           <div class="user-avatar" style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--cond);font-weight:700;background:${ROLES[u.role].color};color:${ROLES[u.role].text};flex-shrink:0">${u.name[0]}</div>
           <div class="user-info">
-            <div class="user-name">${u.name}</div>
+            <div class="user-name">${escapeHtml(u.name)}</div>
             <div class="user-username">${uname} · ${u.dept}</div>
           </div>
           <select class="role-select" onchange="changeRole('${uname}',this.value)">
-            ${Object.entries(ROLES).map(([r,rd]) => `<option value="${r}" ${u.role===r?'selected':''}>${rd.label}</option>`).join('')}
+            ${Object.entries(ROLES).map(([r,rd]) => `<option value="${r}" ${u.role===r?'selected':''}>${escapeHtml(rd.label)}</option>`).join('')}
           </select>
           <button onclick="showChangePassword('${uname}')" style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text3);padding:4px 8px;font-size:12px;cursor:pointer;margin-left:4px;flex-shrink:0" title="Αλλαγή κωδικού">🔑</button>
           ${uname !== 'admin' ? `<button onclick="deleteUser('${uname}')" style="background:var(--bg3);border:1px solid var(--red);border-radius:var(--radius);color:var(--red2);padding:4px 8px;font-size:12px;cursor:pointer;margin-left:4px;flex-shrink:0" title="Διαγραφή χρήστη">🗑</button>` : ''}
@@ -5260,7 +5264,7 @@ function renderAdmin(mc) {
       <div class="form-group">
         <label class="form-label">ΡΟΛΟΣ</label>
         <select class="form-input" id="new-role">
-          ${Object.entries(ROLES).map(([r,rd]) => `<option value="${r}">${rd.label}</option>`).join('')}
+          ${Object.entries(ROLES).map(([r,rd]) => `<option value="${r}">${escapeHtml(rd.label)}</option>`).join('')}
         </select>
       </div>
       <button class="submit-btn" onclick="addUser()">ΠΡΟΣΘΗΚΗ ΧΡΗΣΤΗ</button>
@@ -5277,7 +5281,7 @@ function renderAdmin(mc) {
         </tr>
         ${Object.entries(ROLES).map(([r,rd]) => `
           <tr style="border-top:1px solid var(--border)">
-            <td style="padding:8px 0"><span class="role-badge ${r==='admin'?'role-admin':r==='supervisor'?'role-super':r==='technician'?'role-tech':'role-view'}">${rd.label}</span></td>
+            <td style="padding:8px 0"><span class="role-badge ${r==='admin'?'role-admin':r==='supervisor'?'role-super':r==='technician'?'role-tech':'role-view'}">${escapeHtml(rd.label)}</span></td>
             <td style="text-align:center;color:${rd.canAdd?'var(--green2)':'var(--red2)'}">${rd.canAdd?'✓':'✗'}</td>
             <td style="text-align:center;color:${rd.canDelete?'var(--green2)':'var(--red2)'}">${rd.canDelete?'✓':'✗'}</td>
             <td style="text-align:center;color:${rd.canAdmin?'var(--green2)':'var(--red2)'}">${rd.canAdmin?'✓':'✗'}</td>
@@ -5803,7 +5807,7 @@ function exportMonthlyPDF(entries, monthLabel, month, year) {
           <td>${e.description || '—'}</td>
           <td style="font-family:monospace">${formatDate(e.date)}</td>
           <td>${e.task}</td>
-          <td>${e.tech}</td>
+          <td>${escapeHtml(e.tech)}</td>
           <td class="sign-cell"></td>
         </tr>
       `).join('') : `
@@ -6417,7 +6421,7 @@ async function showActivityLogModal() {
           </div>
           <div>
             <div style="font-size:11px;font-family:var(--cond);font-weight:700;color:var(--purple)">
-              ${meta.icon} ${meta.label}
+              ${meta.icon} ${escapeHtml(meta.label)}
             </div>
             <div style="font-size:11px;color:var(--text2);margin-top:2px;word-break:break-word">${l.details||''}</div>
           </div>
@@ -6462,7 +6466,7 @@ async function showActivityLogModal() {
           <option value="">— Όλες οι ενέργειες —</option>
           ${allActions.map(a => {
             const meta = ACTION_LABELS[a] || { icon:'•', label:a };
-            return `<option value="${a}">${meta.icon} ${meta.label}</option>`;
+            return `<option value="${a}">${meta.icon} ${escapeHtml(meta.label)}</option>`;
           }).join('')}
         </select>
       </div>
@@ -6500,7 +6504,7 @@ function exportActivityLogPDF() {
       <td style="padding:5px 8px;font-size:11px;font-family:monospace;white-space:nowrap">${ts}</td>
       <td style="padding:5px 8px;font-size:11px;font-weight:700">${l.user||'—'}</td>
       <td style="padding:5px 8px;font-size:10px;color:#666">${l.role||''}</td>
-      <td style="padding:5px 8px;font-size:11px;font-weight:600;color:#5A4E8A">${meta.icon} ${meta.label}</td>
+      <td style="padding:5px 8px;font-size:11px;font-weight:600;color:#5A4E8A">${meta.icon} ${escapeHtml(meta.label)}</td>
       <td style="padding:5px 8px;font-size:11px">${(l.details||'').replace(/</g,'&lt;')}</td>
     </tr>`;
   }).join('');
@@ -6896,7 +6900,7 @@ function renderSchedule(mc) {
                   <span class="sched-done-badge" style="${badgeStyle}">${badgeText}</span>
                 </div>
                 <div class="sched-loc">${d.location || d.area || ''} · ${d.type || ''}</div>
-                ${done && lastEntry ? `<div style="font-size:11px;color:var(--green2);margin-top:2px;font-family:var(--mono)">🔧 ${lastEntry.task} · ${lastEntry.tech}</div>` : ''}
+                ${done && lastEntry ? `<div style="font-size:11px;color:var(--green2);margin-top:2px;font-family:var(--mono)">🔧 ${lastEntry.task} · ${escapeHtml(lastEntry.tech)}</div>` : ''}
               </div>
               <div style="text-align:right;flex-shrink:0">
                 ${nd ? `<div class="sched-date">${formatDate(nd)}</div>` : ''}
@@ -7268,8 +7272,34 @@ function npProjectKey(it) {
 function npProjectsList() {
   return [...new Set(NEWPROJECT_ITEMS.map(npProjectKey))].sort((a,b) => a.localeCompare(b, 'el'));
 }
+// npEsc: ασφαλές ΜΟΝΟ για τιμές που μπαίνουν μέσα σε μονού-εισαγωγικού JS
+// string literal, εμφωλευμένο σε onclick="fn('...')" (διπλά εισαγωγικά έξω).
+// ΠΑΛΙΑ δεν έκανε escape το " και το & — μια τιμή (π.χ. όνομα fire system) με
+// διπλό εισαγωγικό μέσα της έσπαγε το ΕΞΩΤΕΡΙΚΟ onclick="..." attribute και
+// επέτρεπε έγχυση αυθαίρετου attribute/JS (π.χ. onmouseover=...). Τώρα κάνει
+// escape πρώτα για το εσωτερικό JS string, μετά για το εξωτερικό HTML attribute.
 function npEsc(s) {
-  return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const jsEscaped = String(s == null ? '' : s)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '');
+  return jsEscaped.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+}
+
+// escapeHtml: γενικό HTML-escaping για κείμενο/attributes (ΟΧΙ εμφωλευμένο σε
+// JS string). Χρήση: εμφάνιση ελεύθερου κειμένου χρήστη (σημειώσεις,
+// περιγραφές, ονόματα) μέσα σε HTML που πάει σε innerHTML, και για value="..."
+// attributes που ΔΕΝ είναι ορίσματα onclick(). Χωρίς αυτό, οτιδήποτε έγραφε
+// κάποιος σε ένα πεδίο σημειώσεων (π.χ. "<img src=x onerror=...>") εκτελούνταν
+// σαν πραγματικό HTML/JS σε όποιον άνοιγε την καταχώρηση — stored XSS.
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 // ══════════════════════════════════════════
@@ -7335,7 +7365,7 @@ function renderFireSystems(mc) {
       <div class="card" style="cursor:pointer;border-left:3px solid ${statusColor}" onclick="openFireSystemDetail('${npEsc(sys.id)}')">
         <div style="display:flex;justify-content:space-between;align-items:flex-start">
           <div>
-            <div style="font-family:var(--cond);font-weight:700;font-size:16px;color:var(--text)">${sys.name}</div>
+            <div style="font-family:var(--cond);font-weight:700;font-size:16px;color:var(--text)">${escapeHtml(sys.name)}</div>
             <div style="font-size:12px;color:var(--text3)">${sys.building || '—'}</div>
           </div>
           ${sys.pdfUrl ? '<div style="font-size:18px">📄</div>' : ''}
@@ -7381,7 +7411,7 @@ function renderFireSystemDetail(mc) {
     </div>
 
     <div class="card">
-      <div style="font-family:var(--cond);font-weight:700;font-size:20px;color:var(--text)">${sys.name}</div>
+      <div style="font-family:var(--cond);font-weight:700;font-size:20px;color:var(--text)">${escapeHtml(sys.name)}</div>
       <div style="font-size:13px;color:var(--text3);margin-top:2px">${sys.building || '—'}</div>
 
       <div style="margin-top:14px;padding:12px;background:var(--bg3);border-radius:8px;border-left:3px solid ${statusColor}">
@@ -7389,10 +7419,10 @@ function renderFireSystemDetail(mc) {
         <div style="font-size:15px;color:${statusColor};font-weight:700;margin-top:2px">
           ${last ? `${last.task} · ${formatDate(last.date)}` : 'Καμία ακόμα'}
         </div>
-        ${last && last.tech ? `<div style="font-size:12px;color:var(--text3);margin-top:2px">από: ${last.tech}</div>` : ''}
+        ${last && last.tech ? `<div style="font-size:12px;color:var(--text3);margin-top:2px">από: ${escapeHtml(last.tech)}</div>` : ''}
       </div>
 
-      ${sys.notes ? `<div style="margin-top:12px;font-size:13px;color:var(--text2);white-space:pre-wrap">${sys.notes}</div>` : ''}
+      ${sys.notes ? `<div style="margin-top:12px;font-size:13px;color:var(--text2);white-space:pre-wrap">${escapeHtml(sys.notes)}</div>` : ''}
 
       <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
         ${sys.pdfUrl ? `<a href="${sys.pdfUrl}" target="_blank" style="flex:1;text-align:center;text-decoration:none;background:var(--blue);color:#fff;padding:10px;border-radius:var(--radius);font-family:var(--cond);font-weight:700;font-size:13px">📄 PDF ΠΕΡΙΓΡΑΦΗΣ</a>` : ''}
@@ -7421,8 +7451,8 @@ function renderFireSystemDetail(mc) {
             </div>
             ${canEdit ? `<button onclick="deleteFireSystemEntryUI('${npEsc(e.id)}')" style="background:none;border:none;color:var(--red2);cursor:pointer;font-size:14px">🗑</button>` : ''}
           </div>
-          ${e.tech ? `<div style="font-size:12px;color:var(--text3);margin-top:4px">Τεχνίτης: ${e.tech}</div>` : ''}
-          ${e.notes ? `<div style="font-size:13px;color:var(--text2);margin-top:4px;white-space:pre-wrap">${e.notes}</div>` : ''}
+          ${e.tech ? `<div style="font-size:12px;color:var(--text3);margin-top:4px">Τεχνίτης: ${escapeHtml(e.tech)}</div>` : ''}
+          ${e.notes ? `<div style="font-size:13px;color:var(--text2);margin-top:4px;white-space:pre-wrap">${escapeHtml(e.notes)}</div>` : ''}
         </div>
       `).join('')}
     </div>
@@ -7447,7 +7477,7 @@ function showFireSystemEntryModal(systemId) {
       <div style="margin-bottom:10px">${dateMaskInputHTML('fse-date', new Date().toISOString().split('T')[0], "v => {}", 'width:100%;padding:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);font-size:14px;box-sizing:border-box')}</div>
 
       <label class="field-label" style="margin-top:10px">ΤΕΧΝΙΤΗΣ</label>
-      <input type="text" id="fse-tech" class="field-input" value="${npEsc(currentUser.name || currentUser.username)}" style="margin-bottom:10px">
+      <input type="text" id="fse-tech" class="field-input" value="${escapeHtml(currentUser.name || currentUser.username)}" style="margin-bottom:10px">
 
       <label class="field-label">ΣΗΜΕΙΩΣΕΙΣ</label>
       <textarea id="fse-notes" class="field-input" rows="3" placeholder="π.χ. λεπτομέρειες βλάβης, ποιος αισθητήρας άλλαξε..." style="margin-bottom:14px"></textarea>
@@ -7519,13 +7549,13 @@ function showFireSystemModal(editId) {
       <div style="font-family:var(--cond);font-weight:700;font-size:16px;margin-bottom:14px">${sys ? 'Επεξεργασία Συστήματος' : 'Νέο Σύστημα'}</div>
 
       <label class="field-label">ΟΝΟΜΑ ΣΥΣΤΗΜΑΤΟΣ</label>
-      <input type="text" id="fs-name" class="field-input" value="${sys ? npEsc(sys.name) : ''}" placeholder="π.χ. Πίνακας FC721 - Κτήριο Διοίκησης" style="margin-bottom:10px">
+      <input type="text" id="fs-name" class="field-input" value="${sys ? escapeHtml(sys.name) : ''}" placeholder="π.χ. Πίνακας FC721 - Κτήριο Διοίκησης" style="margin-bottom:10px">
 
       <label class="field-label">ΚΤΗΡΙΟ / ΤΟΠΟΘΕΣΙΑ</label>
-      <input type="text" id="fs-building" class="field-input" value="${sys ? npEsc(sys.building) : ''}" placeholder="π.χ. Κτήριο Διοίκησης" style="margin-bottom:10px">
+      <input type="text" id="fs-building" class="field-input" value="${sys ? escapeHtml(sys.building) : ''}" placeholder="π.χ. Κτήριο Διοίκησης" style="margin-bottom:10px">
 
       <label class="field-label">ΣΗΜΕΙΩΣΕΙΣ</label>
-      <textarea id="fs-notes" class="field-input" rows="3" style="margin-bottom:10px">${sys ? npEsc(sys.notes) : ''}</textarea>
+      <textarea id="fs-notes" class="field-input" rows="3" style="margin-bottom:10px">${sys ? escapeHtml(sys.notes) : ''}</textarea>
 
       <label class="field-label">PDF ΠΕΡΙΓΡΑΦΗΣ ${sys && sys.pdfUrl ? '(υπάρχει ήδη — επίλεξε νέο για αντικατάσταση)' : ''}</label>
       <input type="file" id="fs-pdf" accept="application/pdf" style="margin-bottom:14px;width:100%">
@@ -8703,7 +8733,7 @@ function exportNewProjectDetailedPDF(projectFilter) {
           <span class="item-tag">${it.tag}</span>
           <span class="item-status" style="background:${STATUS_BG[it.status]||'#eee'};color:${STATUS_FG[it.status]||'#555'}">${it.status}</span>
         </div>
-        <div class="item-meta">${it.project||'—'} · ${it.location||'—'}${it.type?(' · '+it.type):''}${it.area?(' · '+it.area):''}${it.technician?(' · 👤 '+it.technician):''}${it.installDate?(' · 📅 '+formatDate(it.installDate)):''}</div>
+        <div class="item-meta">${it.project||'—'} · ${escapeHtml(it.location||'—')}${it.type?(' · '+it.type):''}${it.area?(' · '+it.area):''}${it.technician?(' · 👤 '+it.technician):''}${it.installDate?(' · 📅 '+formatDate(it.installDate)):''}</div>
         ${linksHTML}
         <div class="notes-block">${notesHTML}</div>
       </div>`;
@@ -8835,9 +8865,9 @@ function renderCylinders(mc) {
               <td style="padding:8px;text-align:center;font-family:var(--mono);color:var(--accent);font-weight:700">${c.num}</td>
               <td style="padding:8px">
                 <div style="font-family:var(--mono);font-size:11px;color:var(--text)">${c.cylNo}</div>
-                <div style="font-size:10px;color:var(--text3)">${c.company||''}</div>
+                <div style="font-size:10px;color:var(--text3)">${escapeHtml(c.company||'')}</div>
               </td>
-              <td style="padding:8px;font-size:11px;color:var(--text2)">${c.gas}</td>
+              <td style="padding:8px;font-size:11px;color:var(--text2)">${escapeHtml(c.gas)}</td>
               <td style="padding:8px;text-align:center;font-size:10px;color:${isExpired(c.expDate)?'var(--red2)':'var(--text3)'};font-family:var(--mono)">${formatDate(c.expDate)}</td>
               <td style="padding:6px 4px;text-align:center">
                 <button onclick="toggleCylStatus('${c.id}')"
@@ -9004,17 +9034,17 @@ function editCylinder(id) {
         </div>
         <div>
           <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--cond);font-weight:700">ΕΤΑΙΡΕΙΑ</div>
-          <input id="ecyl-company" type="text" value="${cyl.company}"
+          <input id="ecyl-company" type="text" value="${escapeHtml(cyl.company)}"
             style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:8px;font-family:var(--font);font-size:13px;box-sizing:border-box">
         </div>
         <div>
           <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--cond);font-weight:700">ΑΕΡΙΟ / ΣΥΓΚΕΝΤΡΩΣΗ</div>
-          <input id="ecyl-gas" type="text" value="${cyl.gas}"
+          <input id="ecyl-gas" type="text" value="${escapeHtml(cyl.gas)}"
             style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:8px;font-family:var(--font);font-size:13px;box-sizing:border-box">
         </div>
         <div>
           <div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--cond);font-weight:700">ΗΜ. ΛΗΞΗΣ</div>
-          <input id="ecyl-exp" type="text" value="${npEsc(cyl.expDate || '')}" placeholder="π.χ. Sep 2027, 19/04/2028"
+          <input id="ecyl-exp" type="text" value="${escapeHtml(cyl.expDate || '')}" placeholder="π.χ. Sep 2027, 19/04/2028"
             style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:8px;font-family:var(--mono);font-size:13px;box-sizing:border-box">
         </div>
         <div>
@@ -9125,8 +9155,8 @@ function exportCylindersPDF(monthKey) {
     <tr>
       <td style="text-align:center;font-weight:700;color:#1a5fa8">${c.num}</td>
       <td style="font-family:monospace;font-size:11px">${c.cylNo}</td>
-      <td style="font-size:11px">${c.company||'—'}</td>
-      <td style="font-size:11px">${c.gas}</td>
+      <td style="font-size:11px">${escapeHtml(c.company||'—')}</td>
+      <td style="font-size:11px">${escapeHtml(c.gas)}</td>
       <td style="font-size:11px;text-align:center;color:${isExpired(c.expDate)?'#cc2222':'#333'}">${formatDate(c.expDate)}</td>
       <td style="text-align:center">
         <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;
