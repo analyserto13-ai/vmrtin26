@@ -80,6 +80,11 @@
   --purple2: #A89EC8;
   --cyan:    #6FAFA8;
   --cyan2:   #87BFB9;
+  /* Έντονο κίτρινο — ΜΟΝΟ για κατάσταση "ΣΕ ΒΛΑΒΗ" ανιχνευτή. Σκόπιμα εκτός
+     της χαμηλού-κορεσμού παλέτας των υπόλοιπων status χρωμάτων, ώστε να
+     ξεχωρίζει αμέσως από το πράσινο "ελέγχθηκε". */
+  --yellow:  #F5C518;
+  --yellow2: #FFD83D;
 
   /* ── SOFT BADGE BACKGROUNDS ── */
   /* Διαφανές φόντο στο χρώμα του status + φωτεινό κείμενο του ίδιου χρώματος.
@@ -91,6 +96,7 @@
   --badge-purple-bg:  rgba(148,137,184,0.14);  --badge-purple-bd:  rgba(148,137,184,0.32);
   --badge-cyan-bg:    rgba(111,175,168,0.14);  --badge-cyan-bd:    rgba(111,175,168,0.32);
   --badge-amber-bg:   rgba(217,142,92,0.14);   --badge-amber-bd:   rgba(217,142,92,0.32);
+  --badge-yellow-bg:  rgba(245,197,24,0.20);   --badge-yellow-bd:  rgba(245,197,24,0.50);
   --badge-neutral-bg: rgba(164,170,179,0.10);  --badge-neutral-bd: rgba(164,170,179,0.28);
 
   --font:  'Inter', sans-serif;
@@ -122,6 +128,7 @@
   --red:     #B04040;  --red2:    #C05050;
   --purple:  #5A4E8A;  --purple2: #6A5E9A;
   --cyan:    #2E7A74;  --cyan2:   #3A8A84;
+  --yellow:  #C99700;  --yellow2: #E0AC00;
 
   --badge-blue-bg:    rgba(46,110,166,0.10);  --badge-blue-bd:    rgba(46,110,166,0.28);
   --badge-green-bg:   rgba(46,125,79,0.10);   --badge-green-bd:   rgba(46,125,79,0.28);
@@ -129,6 +136,7 @@
   --badge-purple-bg:  rgba(90,78,138,0.10);   --badge-purple-bd:  rgba(90,78,138,0.28);
   --badge-cyan-bg:    rgba(46,122,116,0.10);  --badge-cyan-bd:    rgba(46,122,116,0.28);
   --badge-amber-bg:   rgba(194,112,64,0.10);  --badge-amber-bd:   rgba(194,112,64,0.28);
+  --badge-yellow-bg:  rgba(201,151,0,0.16);   --badge-yellow-bd:  rgba(201,151,0,0.45);
   --badge-neutral-bg: rgba(74,80,96,0.08);    --badge-neutral-bd: rgba(74,80,96,0.22);
 
   --on-accent: #FFFFFF;
@@ -1122,6 +1130,7 @@ body {
 .alert-overdue  { background: var(--badge-red-bg);     color: var(--red2);    border: 1px solid var(--badge-red-bd); }
 .alert-soon     { background: var(--badge-amber-bg);   color: var(--accent2); border: 1px solid var(--badge-amber-bd); }
 .alert-ok       { background: var(--badge-green-bg);   color: var(--green2);  border: 1px solid var(--badge-green-bd); }
+.alert-fault    { background: var(--badge-yellow-bg);  color: var(--yellow2); border: 1px solid var(--badge-yellow-bd); font-weight:700; }
 .alert-none     { background: var(--badge-neutral-bg); color: var(--text2);   border: 1px solid var(--badge-neutral-bd); }
 
 /* ── IMPORT DROP ZONE ── */
@@ -1270,6 +1279,10 @@ body {
 .sched-item.has-entry {
   border-left: 3px solid var(--green);
   background: linear-gradient(90deg, rgba(30,122,66,0.05) 0%, transparent 50%);
+}
+.sched-item.fault {
+  border-left: 3px solid var(--yellow);
+  background: linear-gradient(90deg, rgba(245,197,24,0.14) 0%, transparent 50%);
 }
 .sched-item.no-entry {
   border-left: 3px solid var(--border);
@@ -2651,6 +2664,12 @@ function isInFault(det) {
 
 function getNextCalDate(det) {
   if (det.nextCalDate) return det.nextCalDate; // manually set / auto-ενημερωμένο
+  // ΣΗΜΑΝΤΙΚΟ: αν η πιο πρόσφατη καταχώρηση είναι "Βλάβη" και δεν υπάρχει ΠΟΤΕ
+  // αποθηκευμένο nextCalDate, ΜΗΝ υπολογίσεις "Επόμενος" από την ημερομηνία
+  // της βλάβης — αυτό ήταν το bug: έβγαζε μια πλασματική μελλοντική ημερομηνία
+  // (βλάβη + interval) και το όργανο φαινόταν "εντός προγράμματος"/πράσινο.
+  // Σε βλάβη, η "Επόμενος" είναι άγνωστη μέχρι να καταγραφεί πραγματική επισκευή.
+  if (isInFault(det)) return null;
   // Fallback για ανιχνευτές χωρίς αποθηκευμένο nextCalDate (π.χ. παλιά εισαγωγή
   // δεδομένων) — βάσει της πραγματικά πιο πρόσφατης καταχώρησης, ΟΧΙ μόνο
   // αυτών που περιέχουν "βαθμονόμηση" (ίδιο fix με τα υπόλοιπα σημεία).
@@ -2687,6 +2706,7 @@ function getHighRiskDetectors(limit) {
 }
 
 function getAlertStatus(det) {
+  if (isInFault(det)) return 'fault';
   const next = getNextCalDate(det);
   if (!next) return 'none';
   const today = new Date();
@@ -3589,6 +3609,7 @@ function renderDashboard(mc) {
   const overdue = DETECTORS.filter(d => getAlertStatus(d) === 'overdue').length;
   const soon    = DETECTORS.filter(d => getAlertStatus(d) === 'soon').length;
   const okCount = DETECTORS.filter(d => getAlertStatus(d) === 'ok').length;
+  const faultCount = DETECTORS.filter(d => getAlertStatus(d) === 'fault').length;
   const noData  = DETECTORS.filter(d => getAlertStatus(d) === 'none').length;
   // Upcoming this month & next month
   const now = new Date();
@@ -3650,7 +3671,7 @@ function renderDashboard(mc) {
       <div class="page-sub">${t('dash-sub')} · ${new Date().toLocaleDateString('el-GR')}</div>
     </div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:8px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:8px;margin-bottom:8px">
       <div onclick="showKpiList('all')" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:10px;border-top:3px solid var(--accent);cursor:pointer">
         <div style="font-family:var(--mono);font-size:22px;color:var(--accent2)">${total}</div>
         <div style="font-size:10px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.5px">ΣΥΝΟΛΟ</div>
@@ -3671,6 +3692,12 @@ function renderDashboard(mc) {
         <div style="font-size:10px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.5px">ΕΝΤΟΣ</div>
         <div style="font-size:9px;color:var(--green2);font-family:var(--cond);margin-top:3px">▶ ΔΕΣ ΛΙΣΤΑ</div>
       </div>
+      ${faultCount > 0 ? `
+      <div onclick="showKpiList('fault')" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:10px;border-top:3px solid var(--yellow);cursor:pointer">
+        <div style="font-family:var(--mono);font-size:22px;color:var(--yellow2)">${faultCount}</div>
+        <div style="font-size:10px;color:var(--text3);font-family:var(--cond);font-weight:600;letter-spacing:0.5px">ΣΕ ΒΛΑΒΗ</div>
+        <div style="font-size:9px;color:var(--yellow2);font-family:var(--cond);margin-top:3px">▶ ΔΕΣ ΛΙΣΤΑ</div>
+      </div>` : ''}
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px">
@@ -3711,7 +3738,7 @@ function renderDashboard(mc) {
           </div>
           <div style="flex:1"></div>
           <div style="text-align:right">
-            <div style="font-family:var(--mono);font-size:11px;color:${status==='overdue'?'var(--red2)':status==='soon'?'var(--accent2)':'var(--green2)'}">
+            <div style="font-family:var(--mono);font-size:11px;color:${status==='fault'?'var(--yellow2)':status==='overdue'?'var(--red2)':status==='soon'?'var(--accent2)':'var(--green2)'}">
               ${formatDate(nd)}
             </div>
             <div style="font-size:10px;color:var(--text3)">${days < 0 ? Math.abs(days)+' μέρες πριν' : days === 0 ? 'ΣΗΜΕΡΑ' : days+' μέρες'}</div>
@@ -3838,8 +3865,8 @@ function renderDetectorList() {
       const status = getAlertStatus(d);
       const nextDate = getNextCalDate(d);
       const days = getDaysUntil(nextDate);
-      const alertClass = status === 'overdue' ? 'alert-overdue' : status === 'soon' ? 'alert-soon' : status === 'ok' ? 'alert-ok' : 'alert-none';
-      const alertLabel = status === 'overdue' ? `${Math.abs(days)}μ πριν` : status === 'soon' ? `${days}μ` : status === 'ok' ? '✓' : '—';
+      const alertClass = status === 'fault' ? 'alert-fault' : status === 'overdue' ? 'alert-overdue' : status === 'soon' ? 'alert-soon' : status === 'ok' ? 'alert-ok' : 'alert-none';
+      const alertLabel = status === 'fault' ? '🔧 ΒΛΑΒΗ' : status === 'overdue' ? `${Math.abs(days)}μ πριν` : status === 'soon' ? `${days}μ` : status === 'ok' ? '✓' : '—';
       return `
         <div class="detector-item" onclick="openDetector('${d.tag}')">
           <div style="flex:1;min-width:0">
@@ -3890,8 +3917,9 @@ function renderDetectorDetail(mc) {
   const lastCal = getLastCalDate(d);
   const interval = getIntervalMonths(d);
 
-  const alertColor = status === 'overdue' ? 'var(--red2)' : status === 'soon' ? 'var(--accent2)' : status === 'ok' ? 'var(--green2)' : 'var(--text3)';
-  const alertText  = status === 'overdue' ? `⚠ ΛΗΓΜΕΝΟ κατά ${Math.abs(days)} μέρες` :
+  const alertColor = status === 'fault' ? 'var(--yellow2)' : status === 'overdue' ? 'var(--red2)' : status === 'soon' ? 'var(--accent2)' : status === 'ok' ? 'var(--green2)' : 'var(--text3)';
+  const alertText  = status === 'fault'   ? `🔧 ΣΕ ΒΛΑΒΗ` :
+                     status === 'overdue' ? `⚠ ΛΗΓΜΕΝΟ κατά ${Math.abs(days)} μέρες` :
                      status === 'soon'    ? `⏰ Σε ${days} μέρες` :
                      status === 'ok'      ? `✓ Εντός προγράμματος` : '— Δεν υπάρχει ημερομηνία';
 
@@ -4654,7 +4682,7 @@ function submitEntry() {
   // ΕΞΑΙΡΕΣΗ: αν η καταχώρηση είναι "Βλάβη", το όργανο παραμένει εκτός λειτουργίας
   // — ΔΕΝ μηδενίζουμε το ρολόι. Ο επόμενος προγραμματισμένος έλεγχος μένει όπως
   // ήταν, μέχρι να καταγραφεί η πραγματική επισκευή (Βαθμονόμηση/Αλλαγή αισθητήρα/κλπ).
-  if (!selectedTasks.includes('Βλάβη')) {
+  if (!isInFault(det)) {
     const interval = getIntervalMonths(det);
     const trueLastDate = getLastEntryDate(det) || date;
     const nextDate = new Date(trueLastDate);
@@ -5952,14 +5980,16 @@ function exportPDF(mode) {
         col5: status === 'overdue' ? '⚠ ΛΗΓΜΕΝΟ' : status === 'soon' ? `${days} μέρες` : d.entries.length + ' εγγρ.'
       };
     });
-  } else if (mode === 'overdue' || mode === 'soon' || mode === 'ok') {
-    // Εξαγωγή ΑΚΡΙΒΩΣ μιας από τις 3 κατηγορίες KPI του dashboard.
+  } else if (mode === 'overdue' || mode === 'soon' || mode === 'ok' || mode === 'fault') {
+    // Εξαγωγή ΑΚΡΙΒΩΣ μιας από τις κατηγορίες KPI του dashboard.
     const filtered = DETECTORS.filter(d => getAlertStatus(d) === mode);
     kpiSource = filtered;
-    title = { overdue: 'ΛΗΓΜΕΝΟΙ ΑΝΙΧΝΕΥΤΕΣ', soon: 'ΒΑΘΜΟΝΟΜΗΣΗ ≤30 ΜΕΡΕΣ', ok: 'ΕΝΤΟΣ ΠΡΟΓΡΑΜΜΑΤΟΣ' }[mode];
+    title = { overdue: 'ΛΗΓΜΕΝΟΙ ΑΝΙΧΝΕΥΤΕΣ', soon: 'ΒΑΘΜΟΝΟΜΗΣΗ ≤30 ΜΕΡΕΣ', ok: 'ΕΝΤΟΣ ΠΡΟΓΡΑΜΜΑΤΟΣ', fault: 'ΑΝΙΧΝΕΥΤΕΣ ΣΕ ΒΛΑΒΗ' }[mode];
     subtitle = `${filtered.length} ανιχνευτές · Εξαγωγή: ${new Date().toLocaleDateString('el-GR')}`;
     rows = filtered
-      .sort((a,b) => (getNextCalDate(a)||'9999').localeCompare(getNextCalDate(b)||'9999'))
+      .sort((a,b) => mode === 'fault'
+        ? (getLastEntryDate(a)||'').localeCompare(getLastEntryDate(b)||'')
+        : (getNextCalDate(a)||'9999').localeCompare(getNextCalDate(b)||'9999'))
       .map(d => {
         const days = getDaysUntil(getNextCalDate(d));
         const status = getAlertStatus(d);
@@ -5967,8 +5997,8 @@ function exportPDF(mode) {
           col1: d.tag,
           col2: d.location || d.area,
           col3: d.category,
-          col4: formatDate(getNextCalDate(d)),
-          col5: status === 'overdue' ? '⚠ ΛΗΓΜΕΝΟ' : status === 'soon' ? `${days} μέρες` : d.entries.length + ' εγγρ.'
+          col4: status === 'fault' ? `Βλάβη: ${formatDate(getLastEntryDate(d))}` : formatDate(getNextCalDate(d)),
+          col5: status === 'fault' ? '🔧 ΣΕ ΒΛΑΒΗ' : status === 'overdue' ? '⚠ ΛΗΓΜΕΝΟ' : status === 'soon' ? `${days} μέρες` : d.entries.length + ' εγγρ.'
         };
       });
   } else {
@@ -5992,6 +6022,7 @@ function exportPDF(mode) {
     overdue: kpiSource.filter(d=>getAlertStatus(d)==='overdue').length,
     soon:    kpiSource.filter(d=>getAlertStatus(d)==='soon').length,
     ok:      kpiSource.filter(d=>getAlertStatus(d)==='ok').length,
+    fault:   kpiSource.filter(d=>getAlertStatus(d)==='fault').length,
   };
 
   const html = `<!DOCTYPE html>
@@ -6014,6 +6045,7 @@ function exportPDF(mode) {
   .kpi.red   { border-color: #e04840; }
   .kpi.green { border-color: #5cb87a; }
   .kpi.blue  { border-color: #5ab4d4; }
+  .kpi.yellow{ border-color: #e8c518; }
   .section { padding: 0 20px 20px; }
   .section-title { font-size: 12px; font-weight:700; color:#ff7a2a; letter-spacing:1px; text-transform:uppercase; border-bottom:2px solid #ff7a2a; padding-bottom:4px; margin-bottom:10px; }
   table { width:100%; border-collapse:collapse; }
@@ -6025,6 +6057,7 @@ function exportPDF(mode) {
   .overdue { color:#e04840; font-weight:700; }
   .soon { color:#ff7a2a; font-weight:600; }
   .ok { color:#5cb87a; }
+  .fault { color:#c99700; font-weight:700; }
   .footer { position:fixed; bottom:0; left:0; right:0; text-align:center; font-size:9px; color:#bbb; padding:6px; border-top:1px solid #eee; background:#fff; }
   @media print {
     .no-print { display:none!important; }
@@ -6050,6 +6083,7 @@ ${mode !== 'detector' ? `
   <div class="kpi red"><div class="kpi-val">${alertCounts.overdue}</div><div class="kpi-lbl">Ληγμένοι</div></div>
   <div class="kpi" style="border-color:#ff7a2a"><div class="kpi-val">${alertCounts.soon}</div><div class="kpi-lbl">≤30 μέρες</div></div>
   <div class="kpi green"><div class="kpi-val">${alertCounts.ok}</div><div class="kpi-lbl">Εντός</div></div>
+  ${alertCounts.fault > 0 ? `<div class="kpi yellow"><div class="kpi-val">${alertCounts.fault}</div><div class="kpi-lbl">Σε βλάβη</div></div>` : ''}
 </div>` : ''}
 ${mode === 'detector' && selectedDetector ? `
 <div class="section" style="padding-bottom:0">
@@ -6087,7 +6121,7 @@ ${mode === 'detector' && selectedDetector ? `
           <td>${r.col2}</td>
           <td>${r.col3}</td>
           <td>${r.col4}</td>
-          <td class="${r.col5.includes('ΛΗΓΜ')?'overdue':r.col5.includes('μέρ')&&parseInt(r.col5)<31?'soon':''}">${r.col5}</td>
+          <td class="${r.col5.includes('ΒΛΑΒΗ')?'fault':r.col5.includes('ΛΗΓΜ')?'overdue':r.col5.includes('μέρ')&&parseInt(r.col5)<31?'soon':''}">${r.col5}</td>
         </tr>
       `).join('')}
     </tbody>
@@ -6162,17 +6196,20 @@ function exportExcel(mode) {
         status === 'overdue' ? 'ΛΗΓΜΕΝΟ' : status === 'soon' ? `${days} μέρες` : d.entries.length + ' εγγρ.'
       ];
     });
-  } else if (mode === 'overdue' || mode === 'soon' || mode === 'ok') {
+  } else if (mode === 'overdue' || mode === 'soon' || mode === 'ok' || mode === 'fault') {
     const filtered = DETECTORS.filter(d => getAlertStatus(d) === mode);
-    title = { overdue: 'ΛΗΓΜΕΝΟΙ', soon: 'ΕΩΣ_30_ΜΕΡΕΣ', ok: 'ΕΝΤΟΣ_ΠΡΟΓΡΑΜΜΑΤΟΣ' }[mode];
+    title = { overdue: 'ΛΗΓΜΕΝΟΙ', soon: 'ΕΩΣ_30_ΜΕΡΕΣ', ok: 'ΕΝΤΟΣ_ΠΡΟΓΡΑΜΜΑΤΟΣ', fault: 'ΣΕ_ΒΛΑΒΗ' }[mode];
     rows = filtered
-      .sort((a,b) => (getNextCalDate(a)||'9999').localeCompare(getNextCalDate(b)||'9999'))
+      .sort((a,b) => mode === 'fault'
+        ? (getLastEntryDate(a)||'').localeCompare(getLastEntryDate(b)||'')
+        : (getNextCalDate(a)||'9999').localeCompare(getNextCalDate(b)||'9999'))
       .map(d => {
         const days = getDaysUntil(getNextCalDate(d));
         const status = getAlertStatus(d);
         return [
-          d.tag, d.location || d.area, d.category, formatDate(getNextCalDate(d)),
-          status === 'overdue' ? 'ΛΗΓΜΕΝΟ' : status === 'soon' ? `${days} μέρες` : d.entries.length + ' εγγρ.'
+          d.tag, d.location || d.area, d.category,
+          status === 'fault' ? `Βλάβη: ${formatDate(getLastEntryDate(d))}` : formatDate(getNextCalDate(d)),
+          status === 'fault' ? 'ΣΕ ΒΛΑΒΗ' : status === 'overdue' ? 'ΛΗΓΜΕΝΟ' : status === 'soon' ? `${days} μέρες` : d.entries.length + ' εγγρ.'
         ];
       });
   } else {
@@ -6199,6 +6236,7 @@ function showKpiList(filter) {
     overdue: { title: 'ΛΗΓΜΕΝΟΙ ΑΝΙΧΝΕΥΤΕΣ', color: 'var(--red2)',   icon: '⚠️' },
     soon:    { title: 'ΒΑΘΜΟΝΟΜΗΣΗ ≤30 ΜΕΡΕΣ', color: 'var(--accent2)', icon: '⏰' },
     ok:      { title: 'ΕΝΤΟΣ ΠΡΟΓΡΑΜΜΑΤΟΣ',   color: 'var(--green2)', icon: '✅' },
+    fault:   { title: 'ΣΕ ΒΛΑΒΗ',             color: 'var(--yellow2)', icon: '🔧' },
   };
   const lbl = labels[filter];
 
@@ -6242,8 +6280,8 @@ function showKpiList(filter) {
         const status  = getAlertStatus(d);
         const next    = getNextCalDate(d);
         const days    = getDaysUntil(next);
-        const alertColor = status==='overdue' ? 'var(--red2)' : status==='soon' ? 'var(--accent2)' : status==='ok' ? 'var(--green2)' : 'var(--text3)';
-        const daysText = days === null ? '—' : days < 0 ? Math.abs(days)+'μ πριν' : days === 0 ? 'ΣΗΜΕΡΑ' : days+'μ';
+        const alertColor = status==='fault' ? 'var(--yellow2)' : status==='overdue' ? 'var(--red2)' : status==='soon' ? 'var(--accent2)' : status==='ok' ? 'var(--green2)' : 'var(--text3)';
+        const daysText = status==='fault' ? '🔧 ΒΛΑΒΗ' : days === null ? '—' : days < 0 ? Math.abs(days)+'μ πριν' : days === 0 ? 'ΣΗΜΕΡΑ' : days+'μ';
         return `
         <div class="detector-item" onclick="document.getElementById('kpi-list-overlay').remove();openDetector('${d.tag}')" style="margin-bottom:6px">
           <div style="flex:1;min-width:0">
@@ -6885,14 +6923,17 @@ function renderSchedule(mc) {
           idx++;
           const nd = getNextCalDate(d);
           const done = detHasEntryInMonth(d, m, y);
+          const fault = isInFault(d);
           const lastEntry = getLastEntryInMonth(d, m, y);
-          const badgeStyle = done
+          const badgeStyle = fault
+            ? 'background:var(--badge-yellow-bg);color:var(--yellow2);border:1px solid var(--badge-yellow-bd);font-weight:700'
+            : done
             ? 'background:#d8f0e4;color:#0a4820;border:1px solid #80c8a0'
             : 'background:#fde0de;color:#8a1010;border:1px solid #e08080';
-          const badgeText = done ? '✓ ΕΛΕΓΧΘΗΚΕ' : '⏳ ΕΚΚΡΕΜΕΙ';
+          const badgeText = fault ? '🔧 ΣΕ ΒΛΑΒΗ' : done ? '✓ ΕΛΕΓΧΘΗΚΕ' : '⏳ ΕΚΚΡΕΜΕΙ';
 
           itemHtml += `
-            <div class="sched-item ${done ? 'has-entry' : 'no-entry'}" onclick="openDetector('${d.tag}')">
+            <div class="sched-item ${fault ? 'fault' : done ? 'has-entry' : 'no-entry'}" onclick="openDetector('${d.tag}')">
               <div class="sched-num-badge">${idx}</div>
               <div style="flex:1;min-width:0">
                 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -6900,7 +6941,7 @@ function renderSchedule(mc) {
                   <span class="sched-done-badge" style="${badgeStyle}">${badgeText}</span>
                 </div>
                 <div class="sched-loc">${d.location || d.area || ''} · ${d.type || ''}</div>
-                ${done && lastEntry ? `<div style="font-size:11px;color:var(--green2);margin-top:2px;font-family:var(--mono)">🔧 ${lastEntry.task} · ${escapeHtml(lastEntry.tech)}</div>` : ''}
+                ${done && lastEntry ? `<div style="font-size:11px;color:${fault?'var(--yellow2)':'var(--green2)'};margin-top:2px;font-family:var(--mono)">🔧 ${lastEntry.task} · ${escapeHtml(lastEntry.tech)}</div>` : ''}
               </div>
               <div style="text-align:right;flex-shrink:0">
                 ${nd ? `<div class="sched-date">${formatDate(nd)}</div>` : ''}
@@ -6937,8 +6978,9 @@ function renderSchedule(mc) {
   let backlogHtml = '';
   if (backlogList.length > 0) {
     backlogHtml = `
-      <div style="background:var(--red);color:#fff;padding:8px 12px;border-radius:8px 8px 0 0;font-family:var(--cond);font-weight:700;font-size:13px;letter-spacing:0.3px;margin-top:4px">
-        ⚠ ΕΚΚΡΕΜΟΤΗΤΕΣ ΠΡΟΗΓΟΥΜΕΝΩΝ ΜΗΝΩΝ (${backlogList.length})
+      <div style="background:var(--red);color:#fff;padding:8px 12px;border-radius:8px 8px 0 0;font-family:var(--cond);font-weight:700;font-size:13px;letter-spacing:0.3px;margin-top:4px;display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <span>⚠ ΕΚΚΡΕΜΟΤΗΤΕΣ ΠΡΟΗΓΟΥΜΕΝΩΝ ΜΗΝΩΝ (${backlogList.length})</span>
+        <button onclick="exportBacklogPDF()" style="background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.5);color:#fff;padding:4px 10px;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">🖨 ΕΚΤΥΠΩΣΗ</button>
       </div>
       <div style="border:1px solid var(--red);border-top:none;border-radius:0 0 8px 8px;margin-bottom:16px;overflow:hidden">
         ${backlogList.map(d => {
@@ -7095,6 +7137,18 @@ function showSchedulePDFModal(m, y) {
   const dets  = getDetectorsForSchedMonth(usedM, usedY);
   const doneCount = dets.filter(d => detHasEntryInMonth(d, usedM, usedY)).length;
   const pendCount = dets.length - doneCount;
+  let faultDets = DETECTORS.filter(d => isInFault(d));
+  if (schedFilterArea !== 'all') faultDets = faultDets.filter(d => d.area === schedFilterArea);
+  if (schedSearchQ.trim()) {
+    const fq = schedSearchQ.trim().toLowerCase();
+    faultDets = faultDets.filter(d =>
+      (d.tag || '').toLowerCase().includes(fq) ||
+      (d.location || '').toLowerCase().includes(fq) ||
+      (d.type || '').toLowerCase().includes(fq) ||
+      (d.area || '').toLowerCase().includes(fq)
+    );
+  }
+  const faultCount = faultDets.length;
   const monthLabel = MONTH_NAMES_FULL[usedM] + ' ' + usedY;
 
   const overlay = document.createElement('div');
@@ -7120,12 +7174,238 @@ function showSchedulePDFModal(m, y) {
           ⏳ ΕΚΚΡΕΜΟΥΝ (${pendCount})
           <span style="float:right;font-size:11px;font-weight:400;color:var(--text3)">Μόνο εκκρεμείς</span>
         </button>
+        ${faultCount > 0 ? `
+        <button onclick="document.getElementById('sched-pdf-overlay').remove();exportFaultPDF()"
+          style="background:var(--bg3);border:1px solid var(--yellow);border-radius:var(--radius);color:var(--yellow2);padding:12px 14px;font-family:var(--cond);font-weight:700;font-size:13px;cursor:pointer;text-align:left;letter-spacing:0.3px">
+          🔧 ΒΛΑΒΗ (${faultCount})
+          <span style="float:right;font-size:11px;font-weight:400;color:var(--text3)">${schedFilterArea !== 'all' || schedSearchQ.trim() ? 'Με το ενεργό φίλτρο' : 'Όλοι, όλων των μηνών'}</span>
+        </button>` : ''}
       </div>
       <button class="modal-cancel" style="width:100%" onclick="document.getElementById('sched-pdf-overlay').remove()">Ακύρωση</button>
     </div>
   `;
   document.body.appendChild(overlay);
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+}
+
+// ── Εκτύπωση "ΕΚΚΡΕΜΟΤΗΤΕΣ ΠΡΟΗΓΟΥΜΕΝΩΝ ΜΗΝΩΝ" ──
+// Ξεχωριστό export από το exportSchedulePDF(), γιατί το backlog ΔΕΝ ανήκει σε
+// έναν μήνα (είναι ανιχνευτές των οποίων η "Επόμενος" έπεσε πριν τον μήνα που
+// κοιτάει ο χρήστης, άσχετα ποιοι μήνες — μπορεί να είναι Νοέμβριος 2024,
+// Απρίλιος 2025 κλπ, όλοι μαζί). Το exportSchedulePDF() τύπωνε πάντα μόνο τον
+// επιλεγμένο μήνα, οπότε δεν υπήρχε τρόπος να τυπωθεί αυτή η λίστα.
+// Επαναϋπολογίζει τη λίστα με την ίδια ακριβώς λογική με το renderSchedule(),
+// ώστε να τυπώνεται ό,τι ακριβώς βλέπει ο χρήστης (ίδιο φίλτρο περιοχής,
+// ίδια αναζήτηση).
+function exportBacklogPDF() {
+  const { m, y } = scheduleMonthYear;
+  const selMonthStart = new Date(y, m, 1);
+  let backlogList = DETECTORS.filter(d => {
+    const nd = getNextCalDate(d);
+    return nd && new Date(nd) < selMonthStart;
+  });
+  if (schedFilterArea !== 'all') backlogList = backlogList.filter(d => d.area === schedFilterArea);
+  if (schedSearchQ.trim()) {
+    const q = schedSearchQ.trim().toLowerCase();
+    backlogList = backlogList.filter(d =>
+      (d.tag || '').toLowerCase().includes(q) ||
+      (d.location || '').toLowerCase().includes(q) ||
+      (d.type || '').toLowerCase().includes(q) ||
+      (d.area || '').toLowerCase().includes(q)
+    );
+  }
+  backlogList.sort((a,b) => new Date(getNextCalDate(a)) - new Date(getNextCalDate(b)));
+
+  const areaLabel = schedFilterArea !== 'all' ? schedFilterArea : '';
+
+  const rows = backlogList.map((d, i) => {
+    const nd = getNextCalDate(d);
+    return `<tr>
+      <td style="text-align:center;color:#888;font-size:11px">${i+1}</td>
+      <td style="font-family:monospace;font-size:12px;color:#1a5fa8;font-weight:700">${escapeHtml(d.tag)}</td>
+      <td style="font-size:11px">${escapeHtml(d.area || '—')}</td>
+      <td style="font-size:11px">${escapeHtml(d.location || '—')}</td>
+      <td style="font-size:11px">${escapeHtml(d.type || '—')}</td>
+      <td style="text-align:center;font-family:monospace;font-size:11px;color:#c0251e;font-weight:700">${nd ? formatDate(nd) : '—'}</td>
+      <td style="font-size:10px;color:#555">
+        <span style="display:inline-block;border-bottom:1px solid #999;width:110px;vertical-align:bottom">&nbsp;</span>
+      </td>
+    </tr>`;
+  }).join('');
+
+  const html = `<!DOCTYPE html><html lang="el"><head><meta charset="UTF-8">
+<title>Εκκρεμότητες Προηγούμενων Μηνών${areaLabel ? ' · ' + areaLabel : ''}</title>
+<style>
+  body { font-family: Arial, sans-serif; margin:0; padding:14px; background:#fff; color:#222; font-size:12px; }
+  .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px; border-bottom:2px solid #1a2535; padding-bottom:8px; }
+  .logo { font-size:18px; font-weight:900; color:#1a2535; letter-spacing:1px; }
+  .logo span { color:#e8620c; }
+  .title { font-size:14px; font-weight:700; color:#c0251e; text-align:right; }
+  .subtitle { font-size:10px; color:#666; }
+  .summary { display:flex; gap:16px; margin-bottom:12px; }
+  .sum-box { background:#fde0de; border-radius:6px; padding:8px 14px; text-align:center; min-width:80px; }
+  .sum-val { font-size:20px; font-weight:900; color:#c0251e; }
+  .sum-lbl { font-size:9px; color:#8a1010; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; }
+  table { width:100%; border-collapse:collapse; font-size:11px; }
+  th { background:#1a2535; color:#60aaee; padding:6px 8px; text-align:left; font-size:9px; letter-spacing:0.5px; font-weight:700; }
+  td { padding:6px 8px; border-bottom:1px solid #e8e8e8; vertical-align:middle; }
+  tr:nth-child(even) td { background:#f8f9fa; }
+  .footer { margin-top:16px; font-size:9px; color:#999; text-align:center; border-top:1px solid #ddd; padding-top:6px; }
+  .date-row { margin-top:10px; display:flex; justify-content:center; gap:12px; align-items:center; }
+  @media print { .no-print { display:none!important; } }
+</style></head><body>
+<div class="header">
+  <div>
+    <div class="logo">MAR<span>NIK</span>26</div>
+    <div class="subtitle">Motor Oil Refineries · Instruments Dept</div>
+  </div>
+  <div class="title">
+    ⚠ ΕΚΚΡΕΜΟΤΗΤΕΣ ΠΡΟΗΓΟΥΜΕΝΩΝ ΜΗΝΩΝ
+    ${areaLabel ? `<div style="font-size:10px;color:#888;margin-top:2px">${escapeHtml(areaLabel)}</div>` : ''}
+  </div>
+</div>
+<div class="summary">
+  <div class="sum-box"><div class="sum-val">${backlogList.length}</div><div class="sum-lbl">ΕΚΚΡΕΜΟΥΝ</div></div>
+</div>
+<table>
+  <thead>
+    <tr>
+      <th style="width:30px">Α/Α</th>
+      <th>TAG</th>
+      <th>ΠΕΡΙΟΧΗ</th>
+      <th>ΤΟΠΟΘΕΣΙΑ</th>
+      <th>ΤΥΠΟΣ</th>
+      <th style="text-align:center;width:90px">ΗΜ. ΕΠ.ΕΛΕΓΧΟΥ</th>
+      <th>ΤΕΧΝΙΤΗΣ / ΥΠΟΓΡΑΦΗ</th>
+    </tr>
+  </thead>
+  <tbody>${rows || '<tr><td colspan="7" style="text-align:center;padding:16px;color:#aaa">Δεν υπάρχουν εκκρεμότητες</td></tr>'}</tbody>
+</table>
+<div class="footer" id="backlog-footer">Motor Oil Refineries · Instruments Dept · MARNIK26</div>
+<div class="no-print date-row">
+  <label style="font-size:12px;font-weight:600">📅 Ημερομηνία εγγράφου:</label>
+  <input type="text" placeholder="π.χ. 07/06/2026"
+    style="border:1px solid #ccc;border-radius:4px;padding:5px 10px;font-size:12px;width:120px;text-align:center"
+    oninput="document.getElementById('backlog-footer').textContent='Motor Oil Refineries · Instruments Dept · MARNIK26 · '+this.value">
+</div>
+<div class="no-print" style="text-align:center;margin-top:10px">
+  <button onclick="window.print()" style="background:#c0251e;color:#fff;border:none;padding:9px 26px;font-size:13px;font-weight:700;border-radius:6px;cursor:pointer;margin-right:8px">🖨 ΕΚΤΥΠΩΣΗ</button>
+  <button onclick="window.close()" style="background:#555;color:#fff;border:none;padding:9px 18px;font-size:13px;border-radius:6px;cursor:pointer">✕ Κλείσιμο</button>
+</div>
+</body></html>`;
+
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const win  = window.open(url, '_blank');
+  if (!win) showToast('Επίτρεψε τα pop-ups', 'error');
+  else setTimeout(() => URL.revokeObjectURL(url), 3000);
+}
+
+// ── Εκτύπωση "ΣΕ ΒΛΑΒΗ" ──
+// Ίδια λογική με το exportBacklogPDF(): σέβεται το ενεργό φίλτρο περιοχής
+// (schedFilterArea) ΚΑΙ την αναζήτηση (schedSearchQ) της σελίδας Πρόγραμμα —
+// π.χ. αν αναζητήσεις "LHD" και πατήσεις αυτό το κουμπί, βγάζει ΜΟΝΟ τους LHD
+// που είναι αυτή τη στιγμή σε βλάβη, όχι όλο το εργοστάσιο.
+function exportFaultPDF() {
+  let faultList = DETECTORS.filter(d => isInFault(d));
+  if (schedFilterArea !== 'all') faultList = faultList.filter(d => d.area === schedFilterArea);
+  if (schedSearchQ.trim()) {
+    const q = schedSearchQ.trim().toLowerCase();
+    faultList = faultList.filter(d =>
+      (d.tag || '').toLowerCase().includes(q) ||
+      (d.location || '').toLowerCase().includes(q) ||
+      (d.type || '').toLowerCase().includes(q) ||
+      (d.area || '').toLowerCase().includes(q)
+    );
+  }
+  faultList.sort((a,b) => (getLastEntryDate(b)||'').localeCompare(getLastEntryDate(a)||'')); // πιο πρόσφατη βλάβη πρώτα
+
+  const areaLabel = schedFilterArea !== 'all' ? schedFilterArea : '';
+  const searchLabel = schedSearchQ.trim() ? `Αναζήτηση: "${schedSearchQ.trim()}"` : '';
+
+  const rows = faultList.map((d, i) => {
+    const last = getLastEntry(d);
+    return `<tr>
+      <td style="text-align:center;color:#888;font-size:11px">${i+1}</td>
+      <td style="font-family:monospace;font-size:12px;color:#1a5fa8;font-weight:700">${escapeHtml(d.tag)}</td>
+      <td style="font-size:11px">${escapeHtml(d.area || '—')}</td>
+      <td style="font-size:11px">${escapeHtml(d.location || '—')}</td>
+      <td style="font-size:11px">${escapeHtml(d.type || '—')}</td>
+      <td style="text-align:center;font-family:monospace;font-size:11px;color:#c99700;font-weight:700">${last ? formatDate(last.date) : '—'}</td>
+      <td style="font-size:11px">${last ? escapeHtml(last.tech || '—') : '—'}</td>
+      <td style="font-size:10px;color:#555">
+        <span style="display:inline-block;border-bottom:1px solid #999;width:100px;vertical-align:bottom">&nbsp;</span>
+      </td>
+    </tr>`;
+  }).join('');
+
+  const html = `<!DOCTYPE html><html lang="el"><head><meta charset="UTF-8">
+<title>Ανιχνευτές σε Βλάβη${areaLabel ? ' · ' + areaLabel : ''}</title>
+<style>
+  body { font-family: Arial, sans-serif; margin:0; padding:14px; background:#fff; color:#222; font-size:12px; }
+  .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px; border-bottom:2px solid #1a2535; padding-bottom:8px; }
+  .logo { font-size:18px; font-weight:900; color:#1a2535; letter-spacing:1px; }
+  .logo span { color:#e8620c; }
+  .title { font-size:14px; font-weight:700; color:#c99700; text-align:right; }
+  .subtitle { font-size:10px; color:#666; }
+  .summary { display:flex; gap:16px; margin-bottom:12px; }
+  .sum-box { background:#fdf1cc; border-radius:6px; padding:8px 14px; text-align:center; min-width:80px; }
+  .sum-val { font-size:20px; font-weight:900; color:#a87c00; }
+  .sum-lbl { font-size:9px; color:#7a5a00; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; }
+  table { width:100%; border-collapse:collapse; font-size:11px; }
+  th { background:#1a2535; color:#f5d060; padding:6px 8px; text-align:left; font-size:9px; letter-spacing:0.5px; font-weight:700; }
+  td { padding:6px 8px; border-bottom:1px solid #e8e8e8; vertical-align:middle; }
+  tr:nth-child(even) td { background:#f8f9fa; }
+  .footer { margin-top:16px; font-size:9px; color:#999; text-align:center; border-top:1px solid #ddd; padding-top:6px; }
+  .date-row { margin-top:10px; display:flex; justify-content:center; gap:12px; align-items:center; }
+  @media print { .no-print { display:none!important; } }
+</style></head><body>
+<div class="header">
+  <div>
+    <div class="logo">MAR<span>NIK</span>26</div>
+    <div class="subtitle">Motor Oil Refineries · Instruments Dept</div>
+  </div>
+  <div class="title">
+    🔧 ΑΝΙΧΝΕΥΤΕΣ ΣΕ ΒΛΑΒΗ
+    ${(areaLabel || searchLabel) ? `<div style="font-size:10px;color:#888;margin-top:2px">${[areaLabel, searchLabel].filter(Boolean).map(escapeHtml).join(' · ')}</div>` : ''}
+  </div>
+</div>
+<div class="summary">
+  <div class="sum-box"><div class="sum-val">${faultList.length}</div><div class="sum-lbl">Σε βλάβη</div></div>
+</div>
+<table>
+  <thead>
+    <tr>
+      <th style="width:30px">Α/Α</th>
+      <th>TAG</th>
+      <th>ΠΕΡΙΟΧΗ</th>
+      <th>ΤΟΠΟΘΕΣΙΑ</th>
+      <th>ΤΥΠΟΣ</th>
+      <th style="text-align:center;width:90px">ΗΜ. ΒΛΑΒΗΣ</th>
+      <th>ΤΕΧΝΙΤΗΣ (ΑΝΑΦΟΡΑΣ)</th>
+      <th>ΥΠΟΓΡΑΦΗ ΕΠΙΣΚΕΥΗΣ</th>
+    </tr>
+  </thead>
+  <tbody>${rows || '<tr><td colspan="8" style="text-align:center;padding:16px;color:#aaa">Δεν υπάρχουν ανιχνευτές σε βλάβη</td></tr>'}</tbody>
+</table>
+<div class="footer" id="fault-footer">Motor Oil Refineries · Instruments Dept · MARNIK26</div>
+<div class="no-print date-row">
+  <label style="font-size:12px;font-weight:600">📅 Ημερομηνία εγγράφου:</label>
+  <input type="text" placeholder="π.χ. 07/06/2026"
+    style="border:1px solid #ccc;border-radius:4px;padding:5px 10px;font-size:12px;width:120px;text-align:center"
+    oninput="document.getElementById('fault-footer').textContent='Motor Oil Refineries · Instruments Dept · MARNIK26 · '+this.value">
+</div>
+<div class="no-print" style="text-align:center;margin-top:10px">
+  <button onclick="window.print()" style="background:#c99700;color:#fff;border:none;padding:9px 26px;font-size:13px;font-weight:700;border-radius:6px;cursor:pointer;margin-right:8px">🖨 ΕΚΤΥΠΩΣΗ</button>
+  <button onclick="window.close()" style="background:#555;color:#fff;border:none;padding:9px 18px;font-size:13px;border-radius:6px;cursor:pointer">✕ Κλείσιμο</button>
+</div>
+</body></html>`;
+
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const win  = window.open(url, '_blank');
+  if (!win) showToast('Επίτρεψε τα pop-ups', 'error');
+  else setTimeout(() => URL.revokeObjectURL(url), 3000);
 }
 
 function exportSchedulePDF(m, y, pdfFilter) {
@@ -7147,6 +7427,10 @@ function exportSchedulePDF(m, y, pdfFilter) {
 
   const filterLabel = usedFilter === 'done' ? ' · ΕΛΕΓΧΘΗΚΑΝ ΜΟΝΟ'
                     : usedFilter === 'pend' ? ' · ΕΚΚΡΕΜΟΥΝ ΜΟΝΟ' : '';
+  // Στο "ΕΛΕΓΧΘΗΚΑΝ" ο χρήστης θέλει καθαρή λίστα: μόνο πόσοι ελέγχθηκαν,
+  // χωρίς ΣΥΝΟΛΟ/ΕΚΚΡΕΜΟΥΝ/ΣΤΗ ΛΙΣΤΑ και χωρίς την περιγραφή κάτω από τον
+  // τίτλο. Στο ΕΚΚΡΕΜΟΥΝ και στο ΟΛΟΙ όλα παραμένουν όπως πριν.
+  const isDoneOnly = usedFilter === 'done';
 
   const rows = dets.map((d, i) => {
     const done = detHasEntryInMonth(d, usedM, usedY);
@@ -7201,14 +7485,14 @@ function exportSchedulePDF(m, y, pdfFilter) {
   <div class="title">
     ΜΗΝΙΑΙΟ ΠΡΟΓΡΑΜΜΑ ΕΛΕΓΧΩΝ<br>
     <span style="color:#e8620c">${monthLabel}</span>
-    ${filterLabel ? `<div style="font-size:10px;color:#888;margin-top:2px">${filterLabel.replace(' · ','')}</div>` : ''}
+    ${filterLabel && !isDoneOnly ? `<div style="font-size:10px;color:#888;margin-top:2px">${filterLabel.replace(' · ','')}</div>` : ''}
   </div>
 </div>
 <div class="summary">
-  <div class="sum-box"><div class="sum-val" style="color:#1a5fa8">${allDets.length}</div><div class="sum-lbl">ΣΥΝΟΛΟ ΜΗΝΑ</div></div>
+  ${!isDoneOnly ? `<div class="sum-box"><div class="sum-val" style="color:#1a5fa8">${allDets.length}</div><div class="sum-lbl">ΣΥΝΟΛΟ ΜΗΝΑ</div></div>` : ''}
   <div class="sum-box"><div class="sum-val" style="color:#1e7a42">${doneCount}</div><div class="sum-lbl">ΕΓΙΝΑΝ</div></div>
-  <div class="sum-box"><div class="sum-val" style="color:#c0251e">${pendCount}</div><div class="sum-lbl">ΕΚΚΡΕΜΟΥΝ</div></div>
-  ${usedFilter !== 'all' ? `<div class="sum-box" style="background:#fff3e0;border:1px solid #e8a030"><div class="sum-val" style="color:#b06000;font-size:16px">${dets.length}</div><div class="sum-lbl" style="color:#b06000">ΣΤΗ ΛΙΣΤΑ</div></div>` : ''}
+  ${!isDoneOnly ? `<div class="sum-box"><div class="sum-val" style="color:#c0251e">${pendCount}</div><div class="sum-lbl">ΕΚΚΡΕΜΟΥΝ</div></div>` : ''}
+  ${usedFilter !== 'all' && !isDoneOnly ? `<div class="sum-box" style="background:#fff3e0;border:1px solid #e8a030"><div class="sum-val" style="color:#b06000;font-size:16px">${dets.length}</div><div class="sum-lbl" style="color:#b06000">ΣΤΗ ΛΙΣΤΑ</div></div>` : ''}
 </div>
 <table>
   <thead>
