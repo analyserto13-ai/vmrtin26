@@ -2068,7 +2068,7 @@ async function gsGet(params) {
       delete window[cbName];
       script.remove();
       reject(new Error('Timeout'));
-    }, 30000);
+    }, 40000); // 40s (πριν 30s) — περισσότερο περιθώριο για cold-start του Apps Script
     window[cbName] = (data) => {
       clearTimeout(timer);
       delete window[cbName];
@@ -2124,26 +2124,82 @@ async function gsPost(data) {
 // rebuild του ENTRIES. Best-effort: ό,τι αποτύχει ξαναμπαίνει στην ουρά για
 // τον επόμενο συγχρονισμό.
 let queueFlushInProgress = false;
+const BATCH_SIZE = 25; // στοιχεία ανά batchSync request — αρκετά μεγάλο για να μειώσει τα round-trips, αρκετά μικρό για να μη ρισκάρει timeout σε αργή σύνδεση
+
+// ── Στέλνει πολλά items μέσω batchSync σε λίγα requests (chunks των BATCH_SIZE)
+// αντί για ένα forEach(x => gsSaveX(x))/forEach(x => gsDeleteX(x)) που
+// πυροδοτούσε ΤΑΥΤΟΧΡΟΝΑ τόσα requests όσα και τα items — ακριβώς το σενάριο
+// που χτυπάει το όριο ταυτόχρονων εκτελέσεων του Apps Script όταν κάποιος
+// επανασυνδέεται με πολλές εκκρεμείς φιάλες/σημειώσεις/links κλπ.
+// items: array of { id, action, data }. Επιστρέφει Map(id -> true/false).
+async function batchPush(items) {
+  const results = new Map();
+  if (!items.length) return results;
+  for (let i = 0; i < items.length; i += BATCH_SIZE) {
+    const chunk = items.slice(i, i + BATCH_SIZE);
+    try {
+      const res = await gsPost({ action: 'batchSync', data: { items: chunk } });
+      const byId = new Map((res.results || []).map(r => [r.id, !r.error]));
+      chunk.forEach(it => results.set(it.id, byId.has(it.id) ? byId.get(it.id) : false));
+    } catch (err) {
+      chunk.forEach(it => results.set(it.id, false));
+      console.error('batchPush chunk αποτυχία:', err);
+      break; // η σύνδεση προφανώς δεν δουλεύει — μη συνεχίσεις στο επόμενο chunk
+    }
+  }
+  return results;
+}
 async function flushPendingChanges() {
   if (queueFlushInProgress || PENDING_QUEUE.length === 0) return;
   queueFlushInProgress = true;
   try {
-    for (const item of [...PENDING_QUEUE]) {
-      if (item.retries >= QUEUE_MAX_RETRIES) continue; // "κολλημένο" — δεν ξαναπροσπαθεί μόνο του
-      // Safety net: παλιά items από πριν το auth-fix (migration) ή οτιδήποτε
-      // έμεινε χωρίς auth, παίρνουν τα credentials του ΤΩΡΙΝΟΥ συνδεδεμένου
-      // χρήστη πριν σταλούν — καλύτερα αυτό παρά σίγουρη αποτυχία στον server.
-      if (item.data && typeof item.data === 'object' && !item.data.auth) {
-        item.data = { ...item.data, auth: authPayload() };
-      }
+    // ΠΑΛΙΑ: ένα gsPost ανά στοιχείο, διαδοχικά (await μέσα σε for...of) — με
+    // 50+ στοιχεία στην ουρά (π.χ. 50 καταχωρήσεις = ~100 στοιχεία, αφού κάθε
+    // καταχώρηση βάζει addEntry + updateDetectorAuto) αυτό σήμαινε 100
+    // ξεχωριστά HTTP round-trips, το καθένα με δικό του lock/άνοιγμα του
+    // Sheet στο backend — πολύ αργό, η εφαρμογή έδειχνε "Offline" για πολλή
+        // ώρα ενώ προσπαθούσε να τα στείλει ένα-ένα.
+    // ΤΩΡΑ: στέλνουμε σε παρτίδες μέσω του batchSync action — το backend τα
+    // εφαρμόζει όλα μέσα σε ΜΙΑ εκτέλεση/lock. Πολλαπλάσια ταχύτητα.
+    const eligible = [...PENDING_QUEUE].filter(item => (item.retries || 0) < QUEUE_MAX_RETRIES);
+    for (let i = 0; i < eligible.length; i += BATCH_SIZE) {
+      const batch = eligible.slice(i, i + BATCH_SIZE).map(item => {
+        // Safety net: παλιά items από πριν το auth-fix (migration) ή οτιδήποτε
+        // έμεινε χωρίς auth, παίρνουν τα credentials του ΤΩΡΙΝΟΥ συνδεδεμένου
+        // χρήστη πριν σταλούν — καλύτερα αυτό παρά σίγουρη αποτυχία στον server.
+        if (item.data && typeof item.data === 'object' && !item.data.auth) {
+          item.data = { ...item.data, auth: authPayload() };
+        }
+        return { id: item.id, action: item.action, data: item.data };
+      });
       try {
-        await gsPost({ action: item.action, data: item.data });
-        PENDING_QUEUE = PENDING_QUEUE.filter(q => q.id !== item.id);
+        const res = await gsPost({ action: 'batchSync', data: { items: batch } });
+        const results = (res && res.results) || [];
+        const byId = new Map(results.map(r => [r.id, r]));
+        batch.forEach(sent => {
+          const r = byId.get(sent.id);
+          const item = PENDING_QUEUE.find(q => q.id === sent.id);
+          if (!item) return;
+          if (r && !r.error) {
+            PENDING_QUEUE = PENDING_QUEUE.filter(q => q.id !== sent.id);
+          } else {
+            item.retries = (item.retries || 0) + 1;
+            if (r && r.error) console.error('Batch item αποτυχία, παραμένει στην ουρά:', item.action, item.data, r.error);
+          }
+        });
         savePendingQueue();
       } catch(err) {
-        item.retries = (item.retries || 0) + 1;
+        // Απέτυχε ολόκληρη η παρτίδα (π.χ. timeout/offline) — όλα τα στοιχεία
+        // της παραμένουν στην ουρά με +1 retry, θα ξαναδοκιμαστούν στον
+        // επόμενο κύκλο. Σταματάμε εδώ (δεν προχωράμε στην επόμενη παρτίδα)
+        // αφού η σύνδεση προφανώς δεν δουλεύει αυτή τη στιγμή.
+        batch.forEach(sent => {
+          const item = PENDING_QUEUE.find(q => q.id === sent.id);
+          if (item) item.retries = (item.retries || 0) + 1;
+        });
         savePendingQueue();
-        console.error('Flush αποτυχία, παραμένει στην ουρά:', item.action, item.data, err);
+        console.error('Batch flush αποτυχία:', err);
+        break;
       }
     }
   } finally {
@@ -2163,9 +2219,13 @@ async function syncFromSheets() {
     // ΣΗΜΑΝΤΙΚΟ: με χρονικό όριο — αν η ουρά έχει πολλά/αργά/κολλημένα items,
     // ΔΕΝ πρέπει να καθυστερεί επ' άπειρον τη φόρτωση των πραγματικών
     // δεδομένων. Ό,τι δεν πρόλαβε θα ξαναδοκιμαστεί στον επόμενο κύκλο.
+    // 45s (πριν 15s) — τώρα που το flush είναι batched (βλ. flushPendingChanges)
+    // αντί για ένα-ένα, ακόμα και δεκάδες στοιχεία προλαβαίνουν συνήθως να
+    // ολοκληρωθούν εντός αυτού του παραθύρου, οπότε αξίζει να περιμένουμε λίγο
+    // παραπάνω πριν προχωρήσουμε χωρίς αυτά.
     await Promise.race([
       flushPendingChanges(),
-      new Promise(resolve => setTimeout(resolve, 15000)),
+      new Promise(resolve => setTimeout(resolve, 45000)),
     ]);
 
     // ΤΑΧΥΤΗΤΑ: όλα τα ανεξάρτητα reads φεύγουν ΠΑΡΑΛΛΗΛΑ αντί το ένα μετά το
@@ -2202,15 +2262,17 @@ async function syncFromSheets() {
           DETECTORS.push({ ...remote, entries: [] });
         }
       }
-      // Ξαναστείλε delete για tombstones που το Sheet δεν έχει ακόμα σβήσει
-      DELETED_DET_TAGS
-        .filter(tag => sheetDetTags.has(tag))
-        .forEach(tag => gsDeleteDetector({ tag }).then(ok => {
-          if (ok) {
-            DELETED_DET_TAGS = DELETED_DET_TAGS.filter(x => x !== tag);
-            saveDeletedDetTags();
-          }
-        }));
+      // Ξαναστείλε delete για tombstones που το Sheet δεν έχει ακόμα σβήσει (batched)
+      {
+        const retryTags = DELETED_DET_TAGS.filter(tag => sheetDetTags.has(tag));
+        if (retryTags.length) {
+          batchPush(retryTags.map(tag => ({ id: 'deldet_' + tag, action: 'deleteDetector', data: { tag, auth: authPayload() } })))
+            .then(res => {
+              DELETED_DET_TAGS = DELETED_DET_TAGS.filter(tag => !res.get('deldet_' + tag));
+              saveDeletedDetTags();
+            });
+        }
+      }
 
       // Ασφάλεια: αν παραμένει pending rename (το flush παραπάνω αποτυχημένο),
       // το merge πιο πάνω μπορεί να ξανάφερε τον ΠΑΛΙΟ tag σαν "καινούργιο"
@@ -2256,7 +2318,7 @@ async function syncFromSheets() {
         }
       }
       // Sort entries by date
-      DETECTORS.forEach(d => d.entries.sort((a,b) => a.date.localeCompare(b.date)));
+      DETECTORS.forEach(d => d.entries.sort((a,b) => dateSortKey(a.date).localeCompare(dateSortKey(b.date))));
     }
 
     // Ασφάλεια: ξαναεφάρμοσε ό,τι έμεινε pending (π.χ. το GET πέτυχε αλλά το
@@ -2301,22 +2363,27 @@ async function syncFromSheets() {
         // Πρόσθεσε τοπικές που δεν στάλθηκαν ακόμα
         localOnly.forEach(c => CYLINDERS.push(c));
         saveCylinders();
-        // Στείλε τις unsent στο Sheet
-        localOnly.forEach(c => gsSaveCylinder(c));
-        // Ξαναστείλε delete για όσες tombstone δεν έχουν ακόμα σβηστεί από το Sheet
-        DELETED_CYL_IDS
-          .filter(tid => sheetIds.has(tid))
-          .forEach(tid => gsDeleteCylinder(tid).then(ok => {
-            if (ok) {
-              DELETED_CYL_IDS = DELETED_CYL_IDS.filter(x => x !== tid);
-              saveDeletedCylIds();
-            }
-          }));
+        // Στείλε τις unsent στο Sheet (batched — ΟΧΙ ένα ταυτόχρονο request ανά φιάλη)
+        if (localOnly.length) {
+          batchPush(localOnly.map(c => ({ id: 'cyl_' + c.id, action: 'saveCylinder', data: { ...c, auth: authPayload() } }))).catch(()=>{});
+        }
+        // Ξαναστείλε delete για όσες tombstone δεν έχουν ακόμα σβηστεί από το Sheet (batched)
+        {
+          const retryIds = DELETED_CYL_IDS.filter(tid => sheetIds.has(tid));
+          if (retryIds.length) {
+            batchPush(retryIds.map(tid => ({ id: 'delcyl_' + tid, action: 'deleteCylinder', data: { id: tid, auth: authPayload() } })))
+              .then(res => {
+                DELETED_CYL_IDS = DELETED_CYL_IDS.filter(tid => !res.get('delcyl_' + tid));
+                saveDeletedCylIds();
+              });
+          }
+        }
       } else if (CYLINDERS.length > 0) {
-        // Sheet άδειο αλλά τοπικά υπάρχουν φιάλες → στείλε μόνο τις μη-διαγραμμένες
-        CYLINDERS
-          .filter(c => !DELETED_CYL_IDS.includes(String(c.id)))
-          .forEach(c => gsSaveCylinder(c));
+        // Sheet άδειο αλλά τοπικά υπάρχουν φιάλες → στείλε (batched) μόνο τις μη-διαγραμμένες
+        const toSend = CYLINDERS.filter(c => !DELETED_CYL_IDS.includes(String(c.id)));
+        if (toSend.length) {
+          batchPush(toSend.map(c => ({ id: 'cyl_' + c.id, action: 'saveCylinder', data: { ...c, auth: authPayload() } }))).catch(()=>{});
+        }
       }
     }
 
@@ -2333,19 +2400,24 @@ async function syncFromSheets() {
           .forEach(it => NEWPROJECT_ITEMS.push(it));
         npLocalOnly.forEach(it => NEWPROJECT_ITEMS.push(it));
         saveNewProjectItems();
-        npLocalOnly.forEach(it => gsSaveNewProjectItem(it));
-        DELETED_NP_IDS
-          .filter(tid => npSheetIds.has(tid))
-          .forEach(tid => gsDeleteNewProjectItem(tid).then(ok => {
-            if (ok) {
-              DELETED_NP_IDS = DELETED_NP_IDS.filter(x => x !== tid);
-              saveDeletedNpIds();
-            }
-          }));
+        if (npLocalOnly.length) {
+          batchPush(npLocalOnly.map(it => ({ id: 'np_' + it.id, action: 'addNewProjectItem', data: { ...it, auth: authPayload() } }))).catch(()=>{});
+        }
+        {
+          const retryIds = DELETED_NP_IDS.filter(tid => npSheetIds.has(tid));
+          if (retryIds.length) {
+            batchPush(retryIds.map(tid => ({ id: 'delnp_' + tid, action: 'deleteNewProjectItem', data: { id: tid, auth: authPayload() } })))
+              .then(res => {
+                DELETED_NP_IDS = DELETED_NP_IDS.filter(tid => !res.get('delnp_' + tid));
+                saveDeletedNpIds();
+              });
+          }
+        }
       } else if (NEWPROJECT_ITEMS.length > 0) {
-        NEWPROJECT_ITEMS
-          .filter(it => !DELETED_NP_IDS.includes(String(it.id)))
-          .forEach(it => gsSaveNewProjectItem(it));
+        const toSend = NEWPROJECT_ITEMS.filter(it => !DELETED_NP_IDS.includes(String(it.id)));
+        if (toSend.length) {
+          batchPush(toSend.map(it => ({ id: 'np_' + it.id, action: 'addNewProjectItem', data: { ...it, auth: authPayload() } }))).catch(()=>{});
+        }
       }
     }
 
@@ -2362,19 +2434,24 @@ async function syncFromSheets() {
           .forEach(l => LINKS.push(l));
         linkLocalOnly.forEach(l => LINKS.push(l));
         saveLinks();
-        linkLocalOnly.forEach(l => gsSaveLink(l));
-        DELETED_LINK_IDS
-          .filter(tid => linkSheetIds.has(tid))
-          .forEach(tid => gsDeleteLink(tid).then(ok => {
-            if (ok) {
-              DELETED_LINK_IDS = DELETED_LINK_IDS.filter(x => x !== tid);
-              saveDeletedLinkIds();
-            }
-          }));
+        if (linkLocalOnly.length) {
+          batchPush(linkLocalOnly.map(l => ({ id: 'link_' + l.id, action: 'saveLink', data: { ...l, auth: authPayload() } }))).catch(()=>{});
+        }
+        {
+          const retryIds = DELETED_LINK_IDS.filter(tid => linkSheetIds.has(tid));
+          if (retryIds.length) {
+            batchPush(retryIds.map(tid => ({ id: 'dellink_' + tid, action: 'deleteLink', data: { id: tid, auth: authPayload() } })))
+              .then(res => {
+                DELETED_LINK_IDS = DELETED_LINK_IDS.filter(tid => !res.get('dellink_' + tid));
+                saveDeletedLinkIds();
+              });
+          }
+        }
       } else if (LINKS.length > 0) {
-        LINKS
-          .filter(l => !DELETED_LINK_IDS.includes(String(l.id)))
-          .forEach(l => gsSaveLink(l));
+        const toSend = LINKS.filter(l => !DELETED_LINK_IDS.includes(String(l.id)));
+        if (toSend.length) {
+          batchPush(toSend.map(l => ({ id: 'link_' + l.id, action: 'saveLink', data: { ...l, auth: authPayload() } }))).catch(()=>{});
+        }
       }
     }
 
@@ -2391,19 +2468,24 @@ async function syncFromSheets() {
           .forEach(a => LINK_ATTACHMENTS.push(a));
         attLocalOnly.forEach(a => LINK_ATTACHMENTS.push(a));
         saveLinkAttachments();
-        attLocalOnly.forEach(a => gsSaveLinkAttachment(a));
-        DELETED_LINKATT_IDS
-          .filter(tid => attSheetIds.has(tid))
-          .forEach(tid => gsDeleteLinkAttachment(tid).then(ok => {
-            if (ok) {
-              DELETED_LINKATT_IDS = DELETED_LINKATT_IDS.filter(x => x !== tid);
-              saveDeletedLinkAttIds();
-            }
-          }));
+        if (attLocalOnly.length) {
+          batchPush(attLocalOnly.map(a => ({ id: 'att_' + a.id, action: 'saveLinkAttachment', data: { ...a, auth: authPayload() } }))).catch(()=>{});
+        }
+        {
+          const retryIds = DELETED_LINKATT_IDS.filter(tid => attSheetIds.has(tid));
+          if (retryIds.length) {
+            batchPush(retryIds.map(tid => ({ id: 'delatt_' + tid, action: 'deleteLinkAttachment', data: { id: tid, auth: authPayload() } })))
+              .then(res => {
+                DELETED_LINKATT_IDS = DELETED_LINKATT_IDS.filter(tid => !res.get('delatt_' + tid));
+                saveDeletedLinkAttIds();
+              });
+          }
+        }
       } else if (LINK_ATTACHMENTS.length > 0) {
-        LINK_ATTACHMENTS
-          .filter(a => !DELETED_LINKATT_IDS.includes(String(a.id)))
-          .forEach(a => gsSaveLinkAttachment(a));
+        const toSend = LINK_ATTACHMENTS.filter(a => !DELETED_LINKATT_IDS.includes(String(a.id)));
+        if (toSend.length) {
+          batchPush(toSend.map(a => ({ id: 'att_' + a.id, action: 'saveLinkAttachment', data: { ...a, auth: authPayload() } }))).catch(()=>{});
+        }
       }
     }
 
@@ -2420,19 +2502,24 @@ async function syncFromSheets() {
           .forEach(n => NP_NOTES.push(n));
         noteLocalOnly.forEach(n => NP_NOTES.push(n));
         saveNpNotes();
-        noteLocalOnly.forEach(n => gsAddNpNote(n));
-        DELETED_NPNOTE_IDS
-          .filter(tid => noteSheetIds.has(tid))
-          .forEach(tid => gsDeleteNpNote(tid).then(ok => {
-            if (ok) {
-              DELETED_NPNOTE_IDS = DELETED_NPNOTE_IDS.filter(x => x !== tid);
-              saveDeletedNpNoteIds();
-            }
-          }));
+        if (noteLocalOnly.length) {
+          batchPush(noteLocalOnly.map(n => ({ id: 'note_' + n.id, action: 'addNpNote', data: { ...n, auth: authPayload() } }))).catch(()=>{});
+        }
+        {
+          const retryIds = DELETED_NPNOTE_IDS.filter(tid => noteSheetIds.has(tid));
+          if (retryIds.length) {
+            batchPush(retryIds.map(tid => ({ id: 'delnote_' + tid, action: 'deleteNpNote', data: { id: tid, auth: authPayload() } })))
+              .then(res => {
+                DELETED_NPNOTE_IDS = DELETED_NPNOTE_IDS.filter(tid => !res.get('delnote_' + tid));
+                saveDeletedNpNoteIds();
+              });
+          }
+        }
       } else if (NP_NOTES.length > 0) {
-        NP_NOTES
-          .filter(n => !DELETED_NPNOTE_IDS.includes(String(n.id)))
-          .forEach(n => gsAddNpNote(n));
+        const toSend = NP_NOTES.filter(n => !DELETED_NPNOTE_IDS.includes(String(n.id)));
+        if (toSend.length) {
+          batchPush(toSend.map(n => ({ id: 'note_' + n.id, action: 'addNpNote', data: { ...n, auth: authPayload() } }))).catch(()=>{});
+        }
       }
     }
 
@@ -2612,6 +2699,89 @@ function showSyncStatus(msg, type) {
   el.style.color = type === 'ok'  ? '#80d49a' :
                    type === 'err' ? '#f07068' : '#a0b4cc';
   el.style.border = `1px solid ${type === 'ok' ? 'rgba(30,122,66,0.4)' : type === 'err' ? 'rgba(192,37,30,0.4)' : 'rgba(255,255,255,0.15)'}`;
+  // Πατήσιμο μόνο όταν υπάρχουν εκκρεμότητες — δείχνει ΤΙ ακριβώς περιμένει
+  // να συγχρονιστεί (π.χ. ποιος ανιχνευτής), ώστε να μη μένει ένας αριθμός
+  // χωρίς νόημα όταν κάτι έχει κολλήσει.
+  if (pendingChangesCount() > 0) {
+    el.style.cursor = 'pointer';
+    el.onclick = showPendingQueueModal;
+  } else {
+    el.style.cursor = 'default';
+    el.onclick = null;
+  }
+}
+
+// Ανθρώπινη περιγραφή ενός στοιχείου της ουράς — προσπαθεί με τη σειρά τα πιο
+// συνηθισμένα πεδία ανάλογα με τον τύπο ενέργειας, ώστε αντί για ένα ξερό
+// αριθμό ("1 εκκρεμούν") να φαίνεται ΠΟΙΟΣ ανιχνευτής/φιάλη/κλπ είναι.
+function describePendingItem(item) {
+  const d = item.data || {};
+  const ACTION_LABELS = {
+    addEntry: 'Νέα καταχώρηση', updateEntry: 'Επεξεργασία καταχώρησης', deleteEntry: 'Διαγραφή καταχώρησης',
+    updateDetector: 'Ενημέρωση ανιχνευτή', updateDetectorAuto: 'Ενημέρωση "Επόμενος"', renameDetector: 'Μετονομασία ανιχνευτή',
+    saveCylinder: 'Αποθήκευση φιάλης', deleteCylinder: 'Διαγραφή φιάλης',
+    saveFireSystem: 'Αποθήκευση συστήματος πυρόσβεσης', addFireSystemEntry: 'Καταχώρηση πυρόσβεσης', deleteFireSystemEntry: 'Διαγραφή καταχώρησης πυρόσβεσης', deleteFireSystem: 'Διαγραφή συστήματος πυρόσβεσης',
+    addNewProjectItem: 'Νέο στοιχείο έργου', updateNewProjectItem: 'Ενημέρωση στοιχείου έργου', deleteNewProjectItem: 'Διαγραφή στοιχείου έργου', promoteNewProjectItem: 'Προαγωγή στοιχείου έργου',
+    saveLink: 'Αποθήκευση link', deleteLink: 'Διαγραφή link',
+    saveLinkAttachment: 'Αποθήκευση συνημμένου', deleteLinkAttachment: 'Διαγραφή συνημμένου',
+    addNpNote: 'Νέα σημείωση', updateNpNote: 'Ενημέρωση σημείωσης', deleteNpNote: 'Διαγραφή σημείωσης',
+  };
+  const label = ACTION_LABELS[item.action] || item.action;
+  let subject = '';
+  if (item.action === 'renameDetector') subject = `${d.oldTag || '?'} → ${d.newTag || '?'}`;
+  else if (d.tag) subject = d.tag;
+  else if (d.name) subject = d.name;
+  else if (d.label) subject = d.label;
+  else if (d.num) subject = 'Φιάλη ' + d.num;
+  else if (d.project && d.itemName) subject = `${d.project} · ${d.itemName}`;
+  else if (d.project) subject = d.project;
+  else if (d.text) subject = d.text.slice(0, 40);
+  else if (d.id) subject = '#' + d.id;
+  return { label, subject };
+}
+
+function showPendingQueueModal() {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay open';
+  overlay.id = 'pending-queue-overlay';
+  const rows = PENDING_QUEUE.map(item => {
+    const { label, subject } = describePendingItem(item);
+    const stuck = (item.retries || 0) >= QUEUE_MAX_RETRIES;
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--radius2);background:${stuck ? 'var(--badge-red-bg)' : 'var(--bg2)'};border:1px solid ${stuck ? 'var(--badge-red-bd)' : 'var(--border)'};margin-bottom:8px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:700;color:${stuck ? 'var(--red2)' : 'var(--text)'}">${stuck ? '⚠ ' : ''}${escapeHtml(subject || '—')}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${escapeHtml(label)}${item.retries ? ` · ${item.retries} αποτυχίες` : ''}</div>
+        </div>
+        ${stuck ? `<button onclick="retryPendingItem('${item.id}')" style="background:var(--red);color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0">🔁 Ξανά</button>` : ''}
+      </div>`;
+  }).join('');
+
+  overlay.innerHTML = `
+    <div class="modal-box" style="max-width:380px;width:calc(100% - 32px);text-align:left">
+      <div class="modal-title" style="margin-bottom:4px">⏳ Εκκρεμότητες συγχρονισμού</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:14px">
+        ${PENDING_QUEUE.length} στοιχεία δεν έχουν φτάσει ακόμα στο Sheet.
+        ${stuckQueueCount() > 0 ? `<span style="color:var(--red2);font-weight:700"> ${stuckQueueCount()} χρειάζονται προσοχή</span> (απέτυχαν ${QUEUE_MAX_RETRIES} φορές, δεν ξαναδοκιμάζονται μόνα τους).` : 'Θα σταλούν αυτόματα μόλις υπάρχει σταθερή σύνδεση.'}
+      </div>
+      <div style="max-height:50vh;overflow-y:auto;margin-bottom:14px">${rows || '<div style="text-align:center;color:var(--text3);padding:20px">Καμία εκκρεμότητα</div>'}</div>
+      <div style="display:flex;gap:8px">
+        <button onclick="document.getElementById('pending-queue-overlay').remove();syncFromSheets()" style="flex:1;background:var(--accent);color:var(--on-accent);border:none;padding:11px;border-radius:var(--radius);font-weight:700;font-size:13px;cursor:pointer">⟳ Συγχρονισμός τώρα</button>
+        <button class="modal-cancel" onclick="document.getElementById('pending-queue-overlay').remove()">Κλείσιμο</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+// Επαναφέρει τις αποτυχίες ενός "κολλημένου" στοιχείου σε 0 ώστε να ξαναμπεί
+// στην κανονική διαδικασία αυτόματου flush στο επόμενο syncFromSheets().
+function retryPendingItem(id) {
+  const item = PENDING_QUEUE.find(q => q.id === id);
+  if (!item) return;
+  item.retries = 0;
+  savePendingQueue();
+  document.getElementById('pending-queue-overlay')?.remove();
+  syncFromSheets();
 }
 
 // ══════════════════════════════════════════
@@ -2622,15 +2792,44 @@ function getIntervalMonths(det) {
   return CAL_INTERVALS[det.category] || CAL_INTERVALS['DEFAULT'];
 }
 
+// ΣΗΜΑΝΤΙΚΟ: raw string date (π.χ. e.date) ΔΕΝ είναι πάντα ISO yyyy-mm-dd —
+// το Google Sheets μετατρέπει μερικές φορές τιμές σε DD/MM/YYYY ή άλλη μορφή
+// κατά την εγγραφή/ανάγνωση (βλ. σχόλιο στο parseDateParts). Το naive
+// `new Date(str)` ερμηνεύει "05/07/2025" σαν Μάιο (MM/DD αμερικάνικο) αντί
+// για 5 Ιουλίου, και το raw `a.date.localeCompare(b.date)` συγκρίνει
+// αλφαβητικά strings διαφορετικής μορφής χωρίς νόημα. Αυτά τα δύο helpers
+// περνάνε ΠΑΝΤΑ από το parseDateParts() πρώτα, ώστε μήνας/ταξινόμηση να
+// βγαίνουν σωστά ανεξάρτητα από τη μορφή που έχει αποθηκευτεί η ημερομηνία.
+function dateSortKey(dateStr) {
+  const p = parseDateParts(dateStr);
+  if (!p) return '0000-00-00';
+  return String(p.year).padStart(4,'0') + '-' + String(p.month).padStart(2,'0') + '-' + String(p.day).padStart(2,'0');
+}
+// Σαν dateSortKey, αλλά με έλεγχο πριν το parse — ώστε ένα explicit fallback
+// (π.χ. '9999-99-99' για "σπρώξε τα κενά στο τέλος") να μην ξαναπερνά από το
+// parser (που θα το έκανε null -> '0000-00-00' και θα χαλούσε το fallback).
+function dateSortKeyOr(dateStr, fallback) {
+  return dateStr ? dateSortKey(dateStr) : fallback;
+}
+function dateInMonth(dateStr, m, y) {
+  const p = parseDateParts(dateStr);
+  return !!p && p.year === y && (p.month - 1) === m;
+}
+function dateBeforeMonth(dateStr, monthStartDate) {
+  const p = parseDateParts(dateStr);
+  if (!p) return false;
+  return new Date(p.year, p.month - 1, p.day) < monthStartDate;
+}
+
 function getLastCalDate(det) {
   if (!det.entries.length) return null;
   const normalize = s => (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
   const sorted = det.entries
     .filter(e => normalize(e.task).includes('βαθμονομηση') || normalize(e.task).includes('calib'))
-    .sort((a,b) => b.date.localeCompare(a.date));
+    .sort((a,b) => dateSortKey(b.date).localeCompare(dateSortKey(a.date)));
   if (sorted.length) return sorted[0].date;
   // fallback: most recent entry
-  return det.entries.slice().sort((a,b) => b.date.localeCompare(a.date))[0].date;
+  return det.entries.slice().sort((a,b) => dateSortKey(b.date).localeCompare(dateSortKey(a.date)))[0].date;
 }
 
 // Πλήρες αντικείμενο της πιο πρόσφατης καταχώρησης, ΑΝΕΞΑΡΤΗΤΑ από τύπο
@@ -2640,7 +2839,7 @@ function getLastCalDate(det) {
 // πρόσφατη καταχώρηση — μία πηγή αλήθειας αντί για ξεχωριστή λογική σε καθένα.
 function getLastEntry(det) {
   if (!det.entries.length) return null;
-  return det.entries.slice().sort((a,b) => b.date.localeCompare(a.date))[0];
+  return det.entries.slice().sort((a,b) => dateSortKey(b.date).localeCompare(dateSortKey(a.date)))[0];
 }
 
 // Πραγματικά πιο πρόσφατη ημερομηνία καταχώρησης, ΑΝΕΞΑΡΤΗΤΑ από τύπο εργασίας
@@ -3008,7 +3207,7 @@ async function parseExcelFile(buffer, filename) {
     }
 
     // Sort entries by date
-    DETECTORS.forEach(d => d.entries.sort((a,b) => a.date.localeCompare(b.date)));
+    DETECTORS.forEach(d => d.entries.sort((a,b) => dateSortKey(a.date).localeCompare(dateSortKey(b.date))));
 
     // Save to localStorage για persistence
     saveDetectors();
@@ -3617,22 +3816,19 @@ function renderDashboard(mc) {
   const thisYear  = now.getFullYear();
   const upcomingThisMonth = DETECTORS.filter(d => {
     const nd = getNextCalDate(d);
-    if (!nd) return false;
-    const dd = new Date(nd);
-    return dd.getFullYear() === thisYear && dd.getMonth() === thisMonth;
+    return nd ? dateInMonth(nd, thisMonth, thisYear) : false;
   });
   const upcomingNextMonth = DETECTORS.filter(d => {
     const nd = getNextCalDate(d);
     if (!nd) return false;
-    const dd = new Date(nd);
     const nm = (thisMonth + 1) % 12;
     const ny = thisMonth === 11 ? thisYear + 1 : thisYear;
-    return dd.getFullYear() === ny && dd.getMonth() === nm;
+    return dateInMonth(nd, nm, ny);
   });
 
   const recentEntries = [];
   DETECTORS.forEach(d => d.entries.forEach(e => recentEntries.push({...e, tag: d.tag})));
-  recentEntries.sort((a,b) => b.date.localeCompare(a.date));
+  recentEntries.sort((a,b) => dateSortKey(b.date).localeCompare(dateSortKey(a.date)));
   const recent = recentEntries.slice(0, 5);
 
   const areaStats = {};
@@ -5666,7 +5862,7 @@ function exportMonthly(format) {
     });
   });
 
-  monthEntries.sort((a,b) => a.date.localeCompare(b.date));
+  monthEntries.sort((a,b) => dateSortKey(a.date).localeCompare(dateSortKey(b.date)));
 
   const monthNames = ['','Ιανουαρίου','Φεβρουαρίου','Μαρτίου','Απριλίου','Μαΐου','Ιουνίου',
     'Ιουλίου','Αυγούστου','Σεπτεμβρίου','Οκτωβρίου','Νοεμβρίου','Δεκεμβρίου'];
@@ -5949,7 +6145,7 @@ function exportPDF(mode) {
     subtitle = `Εξαγωγή: ${new Date().toLocaleDateString('el-GR')}`;
     const upcoming = DETECTORS
       .filter(d => { const days = getDaysUntil(getNextCalDate(d)); return days !== null && days <= 30; })
-      .sort((a,b) => (getNextCalDate(a)||'').localeCompare(getNextCalDate(b)||''));
+      .sort((a,b) => dateSortKeyOr(getNextCalDate(a),'').localeCompare(dateSortKeyOr(getNextCalDate(b),'')));
     rows = upcoming.map(d => ({
       col1: d.tag,
       col2: formatDate(getNextCalDate(d)),
@@ -5988,8 +6184,8 @@ function exportPDF(mode) {
     subtitle = `${filtered.length} ανιχνευτές · Εξαγωγή: ${new Date().toLocaleDateString('el-GR')}`;
     rows = filtered
       .sort((a,b) => mode === 'fault'
-        ? (getLastEntryDate(a)||'').localeCompare(getLastEntryDate(b)||'')
-        : (getNextCalDate(a)||'9999').localeCompare(getNextCalDate(b)||'9999'))
+        ? dateSortKeyOr(getLastEntryDate(a),'').localeCompare(dateSortKeyOr(getLastEntryDate(b),''))
+        : dateSortKeyOr(getNextCalDate(a),'9999-99-99').localeCompare(dateSortKeyOr(getNextCalDate(b),'9999-99-99')))
       .map(d => {
         const days = getDaysUntil(getNextCalDate(d));
         const status = getAlertStatus(d);
@@ -6176,7 +6372,7 @@ function exportExcel(mode) {
     title = 'ΕΠΟΜΕΝΕΣ_ΒΑΘΜΟΝΟΜΗΣΕΙΣ_30_ΜΕΡΕΣ';
     const upcoming = DETECTORS
       .filter(d => { const days = getDaysUntil(getNextCalDate(d)); return days !== null && days <= 30; })
-      .sort((a,b) => (getNextCalDate(a)||'').localeCompare(getNextCalDate(b)||''));
+      .sort((a,b) => dateSortKeyOr(getNextCalDate(a),'').localeCompare(dateSortKeyOr(getNextCalDate(b),'')));
     rows = upcoming.map(d => [
       d.tag, formatDate(getNextCalDate(d)), d.location || d.area, d.category,
       getAlertStatus(d) === 'overdue' ? 'ΛΗΓΜΕΝΟ' : `${getDaysUntil(getNextCalDate(d))} μέρες`
@@ -6201,8 +6397,8 @@ function exportExcel(mode) {
     title = { overdue: 'ΛΗΓΜΕΝΟΙ', soon: 'ΕΩΣ_30_ΜΕΡΕΣ', ok: 'ΕΝΤΟΣ_ΠΡΟΓΡΑΜΜΑΤΟΣ', fault: 'ΣΕ_ΒΛΑΒΗ' }[mode];
     rows = filtered
       .sort((a,b) => mode === 'fault'
-        ? (getLastEntryDate(a)||'').localeCompare(getLastEntryDate(b)||'')
-        : (getNextCalDate(a)||'9999').localeCompare(getNextCalDate(b)||'9999'))
+        ? dateSortKeyOr(getLastEntryDate(a),'').localeCompare(dateSortKeyOr(getLastEntryDate(b),''))
+        : dateSortKeyOr(getNextCalDate(a),'9999-99-99').localeCompare(dateSortKeyOr(getNextCalDate(b),'9999-99-99')))
       .map(d => {
         const days = getDaysUntil(getNextCalDate(d));
         const status = getAlertStatus(d);
@@ -6246,9 +6442,9 @@ function showKpiList(filter) {
 
   filtered.sort((a,b) => {
     if (filter === 'overdue') {
-      return (getNextCalDate(a)||'').localeCompare(getNextCalDate(b)||'');
+      return dateSortKeyOr(getNextCalDate(a),'').localeCompare(dateSortKeyOr(getNextCalDate(b),''));
     }
-    return (getNextCalDate(a)||'9999').localeCompare(getNextCalDate(b)||'9999');
+    return dateSortKeyOr(getNextCalDate(a),'9999-99-99').localeCompare(dateSortKeyOr(getNextCalDate(b),'9999-99-99'));
   });
 
   const overlay = document.createElement('div');
@@ -6314,7 +6510,7 @@ function showRecentActivityLog() {
   DETECTORS.forEach(d => d.entries.forEach(e => {
     if (e.date >= cutoffStr) allEntries.push({ ...e, tag: d.tag, loc: d.location || d.area });
   }));
-  allEntries.sort((a,b) => b.date.localeCompare(a.date));
+  allEntries.sort((a,b) => dateSortKey(b.date).localeCompare(dateSortKey(a.date)));
 
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay open';
@@ -6826,7 +7022,7 @@ function getDetectorsForSchedMonth(m, y) {
   return DETECTORS.filter(d => {
     // Έλεγξε αν έχει nextCalDate αυτόν τον μήνα
     const nd = getNextCalDate(d);
-    const inNextCal = nd ? (() => { const dd = new Date(nd); return dd.getFullYear() === y && dd.getMonth() === m; })() : false;
+    const inNextCal = nd ? dateInMonth(nd, m, y) : false;
     // Έλεγξε αν ελέγχθηκε εντός αυτού του μήνα
     const hasEntry = detHasEntryInMonth(d, m, y);
     return inNextCal || hasEntry;
@@ -6835,17 +7031,12 @@ function getDetectorsForSchedMonth(m, y) {
 
 function detHasEntryInMonth(d, m, y) {
   // Έχει ο ανιχνευτής εγγραφή εντός αυτού του μήνα;
-  return d.entries.some(e => {
-    const ed = new Date(e.date);
-    return ed.getFullYear() === y && ed.getMonth() === m;
-  });
+  return d.entries.some(e => dateInMonth(e.date, m, y));
 }
 
 function getLastEntryInMonth(d, m, y) {
-  return d.entries.filter(e => {
-    const ed = new Date(e.date);
-    return ed.getFullYear() === y && ed.getMonth() === m;
-  }).sort((a,b) => b.date.localeCompare(a.date))[0] || null;
+  return d.entries.filter(e => dateInMonth(e.date, m, y))
+    .sort((a,b) => dateSortKey(b.date).localeCompare(dateSortKey(a.date)))[0] || null;
 }
 
 function renderSchedule(mc) {
@@ -6961,7 +7152,7 @@ function renderSchedule(mc) {
   const selMonthStart = new Date(y, m, 1);
   let backlogList = DETECTORS.filter(d => {
     const nd = getNextCalDate(d);
-    return nd && new Date(nd) < selMonthStart;
+    return nd && dateBeforeMonth(nd, selMonthStart);
   });
   if (schedFilterArea !== 'all') backlogList = backlogList.filter(d => d.area === schedFilterArea);
   if (schedSearchQ.trim()) {
@@ -6973,7 +7164,7 @@ function renderSchedule(mc) {
       (d.area || '').toLowerCase().includes(q)
     );
   }
-  backlogList.sort((a,b) => new Date(getNextCalDate(a)) - new Date(getNextCalDate(b)));
+  backlogList.sort((a,b) => dateSortKey(getNextCalDate(a)).localeCompare(dateSortKey(getNextCalDate(b))));
 
   let backlogHtml = '';
   if (backlogList.length > 0) {
@@ -7202,7 +7393,7 @@ function exportBacklogPDF() {
   const selMonthStart = new Date(y, m, 1);
   let backlogList = DETECTORS.filter(d => {
     const nd = getNextCalDate(d);
-    return nd && new Date(nd) < selMonthStart;
+    return nd && dateBeforeMonth(nd, selMonthStart);
   });
   if (schedFilterArea !== 'all') backlogList = backlogList.filter(d => d.area === schedFilterArea);
   if (schedSearchQ.trim()) {
@@ -7214,7 +7405,7 @@ function exportBacklogPDF() {
       (d.area || '').toLowerCase().includes(q)
     );
   }
-  backlogList.sort((a,b) => new Date(getNextCalDate(a)) - new Date(getNextCalDate(b)));
+  backlogList.sort((a,b) => dateSortKey(getNextCalDate(a)).localeCompare(dateSortKey(getNextCalDate(b))));
 
   const areaLabel = schedFilterArea !== 'all' ? schedFilterArea : '';
 
@@ -7318,7 +7509,7 @@ function exportFaultPDF() {
       (d.area || '').toLowerCase().includes(q)
     );
   }
-  faultList.sort((a,b) => (getLastEntryDate(b)||'').localeCompare(getLastEntryDate(a)||'')); // πιο πρόσφατη βλάβη πρώτα
+  faultList.sort((a,b) => dateSortKeyOr(getLastEntryDate(b),'').localeCompare(dateSortKeyOr(getLastEntryDate(a),''))); // πιο πρόσφατη βλάβη πρώτα
 
   const areaLabel = schedFilterArea !== 'all' ? schedFilterArea : '';
   const searchLabel = schedSearchQ.trim() ? `Αναζήτηση: "${schedSearchQ.trim()}"` : '';
@@ -7592,7 +7783,7 @@ function escapeHtml(s) {
 let fsDetailId = null; // id συστήματος που εμφανίζεται σε detail view, null = λίστα
 
 function fsEntriesFor(systemId) {
-  return FIRE_SYSTEM_ENTRIES.filter(e => e.systemId === systemId).sort((a,b) => b.date.localeCompare(a.date));
+  return FIRE_SYSTEM_ENTRIES.filter(e => e.systemId === systemId).sort((a,b) => dateSortKey(b.date).localeCompare(dateSortKey(a.date)));
 }
 function fsLastActivity(systemId) {
   const entries = fsEntriesFor(systemId);
