@@ -2228,18 +2228,21 @@ async function syncFromSheets() {
       new Promise(resolve => setTimeout(resolve, 45000)),
     ]);
 
-    // ΤΑΧΥΤΗΤΑ: όλα τα ανεξάρτητα reads φεύγουν ΠΑΡΑΛΛΗΛΑ αντί το ένα μετά το
-    // άλλο — πριν αυτό ήταν 7 διαδοχικά requests (άθροισμα των χρόνων τους),
-    // τώρα είναι όσο το πιο αργό από τα 7. Μεγάλη διαφορά στην ταχύτητα sync.
-    const [detRes, entRes, cylRes, npRes, linksRes, attRes, notesRes] = await Promise.all([
-      gsGet({ action: 'getDetectors' }),
-      gsGet({ action: 'getAllEntries' }),
-      gsGet({ action: 'getCylinders' }),
-      gsGet({ action: 'getNewProjectItems' }),
-      gsGet({ action: 'getLinks' }),
-      gsGet({ action: 'getLinkAttachments' }),
-      gsGet({ action: 'getNpNotes' }),
-    ]);
+    // ΤΑΧΥΤΗΤΑ: παλιά αυτό ήταν 7 ξεχωριστά requests (Promise.all) — έστω κι αν
+    // έφευγαν παράλληλα από τη μεριά του browser, στο backend σήμαιναν 7
+    // ξεχωριστές εκτελέσεις Apps Script, καθεμία με δικό της άνοιγμα του
+    // spreadsheet. Σε "κρύο" ξεκίνημα ή με παραπάνω από έναν χρήστη ταυτόχρονα,
+    // αυτό πολλαπλασίαζε την καθυστέρηση ΚΑΙ αύξανε τον κίνδυνο ορίου
+    // ταυτόχρονων εκτελέσεων. Το getInitialSync() τα φέρνει όλα σε ΜΙΑ
+    // εκτέλεση/request — πολύ πιο γρήγορο και πολύ πιο ανθεκτικό.
+    const initRes = await gsGet({ action: 'getInitialSync' });
+    const detRes   = { detectors: initRes.detectors };
+    const entRes   = { entries: initRes.entries };
+    const cylRes   = { cylinders: initRes.cylinders };
+    const npRes    = { items: initRes.items };
+    const linksRes = { links: initRes.links };
+    const attRes   = { attachments: initRes.attachments };
+    const notesRes = { notes: initRes.notes };
 
     // Load detectors
     if (detRes.detectors && detRes.detectors.length > 0) {
@@ -2753,7 +2756,8 @@ function showPendingQueueModal() {
           <div style="font-size:13px;font-weight:700;color:${stuck ? 'var(--red2)' : 'var(--text)'}">${stuck ? '⚠ ' : ''}${escapeHtml(subject || '—')}</div>
           <div style="font-size:11px;color:var(--text3);margin-top:2px">${escapeHtml(label)}${item.retries ? ` · ${item.retries} αποτυχίες` : ''}</div>
         </div>
-        ${stuck ? `<button onclick="retryPendingItem('${item.id}')" style="background:var(--red);color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0">🔁 Ξανά</button>` : ''}
+        ${stuck ? `<button onclick="retryPendingItem('${item.id}')" style="background:var(--red);color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0">🔁 Ξανά</button>
+        <button onclick="discardPendingItem('${item.id}')" style="background:transparent;color:var(--text3);border:1px solid var(--border2);padding:6px 10px;border-radius:6px;font-size:11px;cursor:pointer;flex-shrink:0">🗑</button>` : ''}
       </div>`;
   }).join('');
 
@@ -2771,6 +2775,21 @@ function showPendingQueueModal() {
       </div>
     </div>`;
   document.body.appendChild(overlay);
+}
+
+// Αφαιρεί οριστικά ένα στοιχείο από την ουρά ΧΩΡΙΣ να το ξαναστείλει —
+// χρήσιμο όταν ο χρήστης έχει ήδη διορθώσει το πρόβλημα χειροκίνητα στο Sheet
+// (π.χ. μια μετονομασία που κολλούσε) και το στοιχείο απλά περισσεύει.
+function discardPendingItem(id) {
+  const item = PENDING_QUEUE.find(q => q.id === id);
+  if (!item) return;
+  const { label, subject } = describePendingItem(item);
+  if (!confirm(`Απόρριψη "${subject || label}";\n\nΔΕΝ θα ξανασταλεί στο Sheet. Κάν' το μόνο αν το έχεις ήδη διορθώσει χειροκίνητα εκεί.`)) return;
+  PENDING_QUEUE = PENDING_QUEUE.filter(q => q.id !== id);
+  savePendingQueue();
+  document.getElementById('pending-queue-overlay')?.remove();
+  if (PENDING_QUEUE.length > 0) showPendingQueueModal();
+  showToast('Αφαιρέθηκε από την ουρά');
 }
 
 // Επαναφέρει τις αποτυχίες ενός "κολλημένου" στοιχείου σε 0 ώστε να ξαναμπεί
